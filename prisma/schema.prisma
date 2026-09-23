@@ -1,0 +1,96 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Article {
+  id            String    @id @default(cuid())
+
+  // source
+  sourceType    String // "hackernews" | "rss"
+  sourceName    String // np. "Hacker News", "r/technology", "The Verge"
+  externalId    String? // id posta w źródle, do deduplikacji
+  url           String    @unique
+  title         String
+  content       String? // excerpt/treść użyta do klasyfikacji
+  score         Int? // punkty/upvotes ze źródła
+  commentsCount Int?
+  publishedAt   DateTime?
+  fetchedAt     DateTime  @default(now())
+
+  // klasyfikacja AI
+  category      String? // "AI" | "Gaming" | "Tech" | "Inne"
+  priority      Int? // 1 (pomiń) - 5 (koniecznie przeczytaj)
+  worthReading  Boolean?
+  summary       String?
+  classifiedAt  DateTime?
+
+  // stan czytelnika
+  read          Boolean   @default(false)
+  readAt        DateTime? // kiedy ostatnio otwarty — do widoku "Historia"
+  saved         Boolean   @default(false)
+
+  // feedback do dalszego dostrajania priorytetów
+  dismissed     Boolean   @default(false)
+  dismissedAt   DateTime?
+
+  // deduplikacja tego samego newsa z różnych źródeł
+  duplicateOfId String?
+  duplicateOf   Article?  @relation("Duplicates", fields: [duplicateOfId], references: [id])
+  duplicates    Article[] @relation("Duplicates")
+
+  // liczba niezależnych źródeł, które opisały tę samą historię (tylko na
+  // artykule kanonicznym — duplikaty wskazujące na niego mają tu zawsze 1)
+  consensusSources Int @default(1)
+
+  // rzetelność treści — liczona TYLKO gdy mamy pełny tekst artykułu
+  // (pogłębiona klasyfikacja), inaczej zostaje null, bo z samego tytułu
+  // nie da się ocenić, czy to lanie wody
+  qualityLabel String? // "rzetelny" | "przeciętny" | "lanie_wody"
+  qualityNote  String? // jednozdaniowe uzasadnienie oceny
+
+  // wątek tematyczny — grupuje kolejne aktualizacje tej samej rozwijającej
+  // się historii w czasie (podobne, ale NIE identyczne jak duplikat).
+  // Wartość to id artykułu, który otworzył wątek; ten artykuł ma tu swoje
+  // własne id, gdy wątek już się utworzy.
+  threadId String?
+
+  // twarde filtry treści — stosowane wszędzie, nie tylko w głównym widoku
+  sponsored Boolean @default(false) // reklama/afiliacja/promo, wykryte słowami kluczowymi ALBO przez AI
+  language  String? // "pl" | "en" | "other" — null dopóki nie sklasyfikowane
+
+  @@index([sourceType])
+  @@index([category])
+  @@index([priority])
+  @@index([publishedAt])
+  @@index([readAt])
+  @@index([duplicateOfId])
+  @@index([dismissed])
+  @@index([threadId])
+  @@index([sponsored])
+  @@index([language])
+}
+
+// codzienny akapit AI syntetyzujący newsy z ostatnich 24h, generowany
+// przy każdym scrapowaniu i nadpisywany dla bieżącej daty
+model DailyBrief {
+  id        String   @id @default(cuid())
+  date      String   @unique // "YYYY-MM-DD"
+  content   String
+  createdAt DateTime @default(now())
+}
+
+// pojedynczy wiersz (id=1) — kiedy ostatni raz realnie odwiedzono stronę
+// główną, do trybu "dogoń się" po dłuższej nieobecności
+model VisitState {
+  id            Int      @id @default(1)
+  lastVisitedAt DateTime @default(now())
+}
