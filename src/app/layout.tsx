@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Source_Serif_4, IBM_Plex_Sans } from "next/font/google";
+import { CategoryHideToast } from "@/components/CategoryHideToast";
+import { getLocale } from "@/lib/i18n/locale";
 import "./globals.css";
 
 const sourceSerif = Source_Serif_4({
@@ -19,7 +21,8 @@ export const metadata: Metadata = {
   description: "Twój codzienny przegląd newsów z tech, AI i gier — posortowany przez AI.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  const locale = await getLocale();
   return (
     <html
       lang="pl"
@@ -28,6 +31,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col sm:flex-row bg-bg text-text">
         {children}
+        <CategoryHideToast locale={locale} />
       </body>
     </html>
   );

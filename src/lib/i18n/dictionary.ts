@@ -88,6 +88,10 @@ export type Dictionary = {
     subtitle: string;
     categoriesHeading: string;
   };
+  categoryToast: {
+    hidden: (label: string) => string;
+    undo: string;
+  };
   errors: {
     invalidRequest: string;
     emptyQuestion: string;
@@ -257,6 +261,10 @@ const pl: Dictionary = {
     title: "Ustawienia",
     subtitle: "Dopasuj apkę do siebie.",
     categoriesHeading: "Widoczne kategorie — odznacz, czego nie chcesz widzieć",
+  },
+  categoryToast: {
+    hidden: (label) => `Ukryto kategorię „${label}”`,
+    undo: "Cofnij",
   },
   errors: {
     invalidRequest: "Nieprawidłowe zapytanie",
@@ -428,6 +436,10 @@ const en: Dictionary = {
     title: "Settings",
     subtitle: "Make the app yours.",
     categoriesHeading: "Visible categories — uncheck what you don't want to see",
+  },
+  categoryToast: {
+    hidden: (label) => `Hid category "${label}"`,
+    undo: "Undo",
   },
   errors: {
     invalidRequest: "Invalid request",

@@ -1,6 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
+import { dispatchCategoryHidden } from "@/components/CategoryHideToast";
 import type { Category } from "@/lib/categories";
 import { dictionaries } from "@/lib/i18n/dictionary";
 import type { Locale } from "@/lib/i18n/locale";
@@ -19,6 +20,7 @@ export function HideCategoryButton({
   function handleClick(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
+    dispatchCategoryHidden(category);
     startTransition(() => {
       setCategoryVisibility(category, false);
     });
