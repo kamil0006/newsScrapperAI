@@ -1,32 +1,32 @@
 # newsScrapperAI
 
-Osobisty czytnik newsów z AI/tech/gier, który sam wyszukuje, ocenia i porządkuje treści — mniej scrollowania, więcej sygnału.
+A personal AI/tech/gaming news reader that finds, scores, and organizes content for you — less scrolling, more signal.
 
-## Jak to działa
+## How it works
 
-1. **Zbieranie** — Hacker News (oficjalne API) + kilkanaście feedów RSS (Ars Technica, TechCrunch, PC Gamer, IGN i inne).
-2. **Klasyfikacja AI** — każdy news dostaje kategorię, priorytet (1-5), krótkie streszczenie, ocenę rzetelności i flagę "czy to sponsorowane/promo". Dla obiecujących newsów AI pobiera pełną treść artykułu i ocenia dokładniej.
-3. **Porządkowanie** — wykrywanie duplikatów między źródłami (z podbiciem priorytetu, gdy kilka niezależnych portali pisze o tym samym), łączenie w wątki tematyczne rozwijających się historii, filtr sponsorowanych/promo treści i obcych języków.
-4. **Czytanie** — lista posortowana wg tego, co warto przeczytać, z zapisywaniem, historią przeczytanych, wyszukiwarką, czatem AI odpowiadającym na podstawie Twojej bazy, oraz trybem "dogoń się" po dłuższej nieobecności.
+1. **Collection** — Hacker News (official API) plus a dozen+ RSS feeds (Ars Technica, TechCrunch, PC Gamer, IGN, and others).
+2. **AI classification** — each news item gets a category, a priority (1-5), a short summary, a reliability score, and a flag for "is this sponsored/promo". For promising AI news, the full article is fetched and scored in more detail.
+3. **Organization** — duplicate detection across sources (boosting priority when several independent outlets cover the same story), grouping into threads for developing stories, and filtering out sponsored/promo content and foreign languages.
+4. **Reading** — a list sorted by what's worth reading, with saving, read history, search, an AI chat that answers from your own article database, and a "catch up" mode after being away for a while.
 
-Dostęp przez konto (email + hasło) — każdy użytkownik ma własne zapisane/przeczytane/odrzucone, baza newsów jest wspólna. Rejestracja jest obecnie otwarta (bez potwierdzania maila — to wymaga własnej domeny), więc link do apki warto trzymać tylko dla osób, którym chcesz dać dostęp.
+Access is account-based (email + password) — each user has their own saved/read/dismissed state, while the news database is shared. Sign-up is currently open (no email confirmation — that needs a custom domain), so keep the app link only with people you want to have access.
 
 ## Stack
 
 Next.js (App Router) · TypeScript · Prisma + SQLite · OpenAI API · Tailwind CSS · Vitest
 
-## Uruchomienie
+## Running it
 
 ```bash
 npm install
-cp .env.example .env   # uzupełnij OPENAI_API_KEY i SESSION_SECRET (openssl rand -base64 32)
+cp .env.example .env   # fill in OPENAI_API_KEY and SESSION_SECRET (openssl rand -base64 32)
 npx prisma migrate dev
 npm run dev
 ```
 
-Aplikacja wystartuje na `http://localhost:3000`. Kliknij "Pobierz nowe newsy" w panelu bocznym, żeby zaciągnąć i sklasyfikować pierwszą partię.
+The app starts at `http://localhost:3000`. Click "Fetch new news" in the sidebar to pull and classify the first batch.
 
-## Testy
+## Tests
 
 ```bash
 npm run test
