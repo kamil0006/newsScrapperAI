@@ -113,6 +113,8 @@ export type Dictionary = {
     dismiss: string;
     dismissTitle: string;
     discuss: string;
+    hideCategory: string;
+    hideCategoryTitle: string;
   };
 };
 
@@ -283,6 +285,8 @@ const pl: Dictionary = {
     dismiss: "Oznacz jako nieistotne",
     dismissTitle: "Nieistotne — obniża priorytet podobnych newsów w przyszłości",
     discuss: "Przedyskutuj w czacie",
+    hideCategory: "Ukryj tę kategorię",
+    hideCategoryTitle: "Ukryj tę kategorię — możesz ją z powrotem włączyć w Ustawieniach",
   },
 };
 
@@ -452,6 +456,8 @@ const en: Dictionary = {
     dismiss: "Mark as not interested",
     dismissTitle: "Not interested — lowers the priority of similar news going forward",
     discuss: "Discuss in chat",
+    hideCategory: "Hide this category",
+    hideCategoryTitle: "Hide this category — you can turn it back on in Settings",
   },
 };
 
