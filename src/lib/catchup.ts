@@ -1,3 +1,5 @@
+import { dictionaries } from "@/lib/i18n/dictionary";
+import type { Locale } from "@/lib/i18n/locale";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
 
@@ -10,8 +12,8 @@ export type CatchUpState = {
   hoursAway: number;
 };
 
-export async function getCatchUpState(): Promise<CatchUpState> {
-  const state = await prisma.visitState.findUnique({ where: { id: 1 } });
+export async function getCatchUpState(userId: string): Promise<CatchUpState> {
+  const state = await prisma.visitState.findUnique({ where: { userId } });
   if (!state) return { isCatchUp: false, since: null, hoursAway: 0 };
 
   const now = Date.now();
@@ -36,13 +38,12 @@ export function catchUpDateFilter(since: Date): Prisma.ArticleWhereInput {
   };
 }
 
-// "od" wymaga dopełniacza — stąd "godziny"/"dnia" w liczbie pojedynczej,
-// a nie "godzinę"/"dzień" (to byłby biernik, inna konstrukcja)
-export function sinceLabel(hours: number): string {
+export function sinceLabel(hours: number, locale: Locale = "pl"): string {
+  const t = dictionaries[locale].time;
   if (hours < 24) {
     const h = Math.max(1, Math.round(hours));
-    return h === 1 ? "od godziny" : `od ${h} godzin`;
+    return h === 1 ? t.sinceHour : t.sinceHours(h);
   }
   const days = Math.max(1, Math.round(hours / 24));
-  return days === 1 ? "od dnia" : `od ${days} dni`;
+  return days === 1 ? t.sinceDay : t.sinceDays(days);
 }

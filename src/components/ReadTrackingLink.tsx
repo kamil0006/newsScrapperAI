@@ -30,8 +30,8 @@ export function ReadTrackingLink({
   }
 
   function handleAuxClick(event: MouseEvent<HTMLAnchorElement>) {
-    // środkowy przycisk myszy (otwórz w nowej karcie w tle) wywołuje
-    // "auxclick", nie "click" — bez tego historia by tego nie widziała
+    // the middle mouse button (open in a background tab) fires
+    // "auxclick", not "click" — without this, history wouldn't see it
     if (event.button === 1) markRead();
   }
 

@@ -1,24 +1,45 @@
+import type { Category } from "@/lib/categories";
+import { visibleCategoriesFilter } from "@/lib/categoryPrefs";
 import { visibleContentFilter } from "@/lib/contentFilter";
 import { freshnessFilter } from "@/lib/freshness";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
 
-export async function getNavCounts(allDateFilter?: Prisma.ArticleWhereInput) {
+export async function getNavCounts(
+  userId: string,
+  hiddenCategories: Category[] = [],
+  allDateFilter?: Prisma.ArticleWhereInput,
+) {
+  const categoryVisibility = visibleCategoriesFilter(hiddenCategories);
+
   const [all, saved, history] = await Promise.all([
     prisma.article.count({
       where: {
         AND: [
-          { duplicateOfId: null, dismissed: false },
+          { duplicateOfId: null, NOT: { articleStates: { some: { userId, dismissed: true } } } },
           visibleContentFilter(),
+          categoryVisibility,
           allDateFilter ?? freshnessFilter(),
         ],
       },
     }),
     prisma.article.count({
-      where: { saved: true, dismissed: false, ...visibleContentFilter() },
+      where: {
+        AND: [
+          { articleStates: { some: { userId, saved: true } } },
+          { NOT: { articleStates: { some: { userId, dismissed: true } } } },
+          visibleContentFilter(),
+          categoryVisibility,
+        ],
+      },
     }),
-    prisma.article.count({
-      where: { read: true, dismissed: false, ...visibleContentFilter() },
+    prisma.articleState.count({
+      where: {
+        userId,
+        read: true,
+        dismissed: false,
+        article: { AND: [visibleContentFilter(), categoryVisibility] },
+      },
     }),
   ]);
 

@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { ArticleRow } from "@/components/ArticleRow";
 import { CategoryTabs } from "@/components/CategoryTabs";
 import { CatchUpBanner } from "@/components/CatchUpBanner";
@@ -7,13 +8,18 @@ import { SearchBar } from "@/components/SearchBar";
 import { Sidebar } from "@/components/Sidebar";
 import { SourceFilter } from "@/components/SourceFilter";
 import { StatsPanel } from "@/components/StatsPanel";
+import { TopPicks } from "@/components/TopPicks";
 import { VisitTracker } from "@/components/VisitTracker";
 import { getTodaysBrief } from "@/lib/ai/brief";
 import { generateCatchUpBrief } from "@/lib/ai/catchupBrief";
+import { getCurrentUserId } from "@/lib/auth/currentUser";
 import { CATEGORIES, toCategory, type Category } from "@/lib/categories";
+import { parseHiddenCategories, visibleCategoriesFilter } from "@/lib/categoryPrefs";
 import { catchUpDateFilter, getCatchUpState, sinceLabel } from "@/lib/catchup";
 import { visibleContentFilter } from "@/lib/contentFilter";
 import { freshnessFilter, getStartOfToday } from "@/lib/freshness";
+import { dictionaries } from "@/lib/i18n/dictionary";
+import { getLocale } from "@/lib/i18n/locale";
 import { getNavCounts } from "@/lib/navCounts";
 import { prisma } from "@/lib/prisma";
 import type { ArticleFilters } from "@/lib/queryParams";
@@ -28,7 +34,16 @@ function parseCategory(value: string | string[] | undefined): Category | null {
 }
 
 export default async function Home({ searchParams }: PageProps<"/">) {
+  const userId = await getCurrentUserId();
+  if (!userId) redirect("/login");
+
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { hiddenCategories: true } });
+  const hiddenCategories = parseHiddenCategories(user?.hiddenCategories ?? "");
+  const categoryVisibility = visibleCategoriesFilter(hiddenCategories);
+
   const params = await searchParams;
+  const locale = await getLocale();
+  const dict = dictionaries[locale];
   const category = parseCategory(params.category);
   const source = (Array.isArray(params.source) ? params.source[0] : params.source) ?? null;
   const savedOnly = params.saved === "1";
@@ -38,7 +53,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
   const isHomepage = isDefaultView && !category && !source && !query;
 
   const catchUp = isHomepage
-    ? await getCatchUpState()
+    ? await getCatchUpState(userId)
     : { isCatchUp: false, since: null, hoursAway: 0 };
 
   const filters: ArticleFilters = {
@@ -49,75 +64,117 @@ export default async function Home({ searchParams }: PageProps<"/">) {
     q: query,
   };
 
-  const where: Prisma.ArticleWhereInput = {
-    AND: [
-      {
-        ...(category ? { category } : {}),
-        ...(source ? { sourceName: source } : {}),
-        ...(savedOnly ? { saved: true } : {}),
-        ...(historyOnly ? { read: true } : {}),
-        ...(query ? { title: { contains: query } } : {}),
-        // „nieistotne” to bezpośrednia akcja użytkownika — chowamy wszędzie
-        dismissed: false,
-        // duplikaty chowamy tylko w głównym widoku — Zapisane/Historia
-        // pokazują to, co realnie zapisałeś/otworzyłeś
-        ...(isDefaultView ? { duplicateOfId: null } : {}),
-      },
-      // sponsoring/promo i obcy język — twarde filtry, wszędzie
-      visibleContentFilter(),
-      // stare newsy znikają tylko z głównego widoku; w trybie "dogoń się"
-      // okno rozciąga się na całą nieobecność zamiast stałych 7 dni
-      ...(isDefaultView
-        ? [catchUp.isCatchUp && catchUp.since ? catchUpDateFilter(catchUp.since) : freshnessFilter()]
-        : []),
-    ],
+  const notDismissedByUser: Prisma.ArticleWhereInput = {
+    NOT: { articleStates: { some: { userId, dismissed: true } } },
   };
 
-  const orderBy: Prisma.ArticleOrderByWithRelationInput[] = historyOnly
-    ? [{ readAt: "desc" }]
-    : [{ priority: "desc" }, { publishedAt: "desc" }];
-
   const startOfToday = getStartOfToday();
+  const statsDateFilter = catchUp.isCatchUp && catchUp.since ? catchUpDateFilter(catchUp.since) : freshnessFilter();
 
-  const [rows, counts, brief, newToday, mustRead, pendingClassification, sourceRows] =
-    await Promise.all([
-      prisma.article.findMany({ where, orderBy, take: 50 }),
-      getNavCounts(
-        catchUp.isCatchUp && catchUp.since ? catchUpDateFilter(catchUp.since) : undefined,
-      ),
-      catchUp.isCatchUp && catchUp.since
-        ? generateCatchUpBrief(catchUp.since)
-        : isHomepage
-          ? getTodaysBrief()
-          : Promise.resolve(null),
-      prisma.article.count({
-        where: {
-          fetchedAt: { gte: startOfToday },
-          dismissed: false,
-          duplicateOfId: null,
-          ...visibleContentFilter(),
-        },
-      }),
-      prisma.article.count({
-        where: {
-          priority: 5,
-          read: false,
-          dismissed: false,
-          duplicateOfId: null,
-          ...visibleContentFilter(),
-        },
-      }),
-      prisma.article.count({ where: { classifiedAt: null, dismissed: false } }),
-      prisma.article.findMany({
-        distinct: ["sourceName"],
-        select: { sourceName: true },
-        orderBy: { sourceName: "asc" },
-      }),
-    ]);
+  // "History" needs to be ordered by this user's readAt, which only exists
+  // on ArticleState — Prisma can't order a to-many relation's filtered field
+  // from the parent model, so it's queried from ArticleState as the root.
+  // Either way, `rowsPromise` resolves to { article, read, saved }[] so the
+  // mapping below doesn't need to care which path produced it.
+  const rowsPromise = historyOnly
+    ? prisma.articleState
+        .findMany({
+          where: {
+            userId,
+            read: true,
+            dismissed: false,
+            article: {
+              AND: [
+                {
+                  ...(category ? { category } : {}),
+                  ...(source ? { sourceName: source } : {}),
+                  ...(query ? { title: { contains: query } } : {}),
+                },
+                visibleContentFilter(),
+                categoryVisibility,
+              ],
+            },
+          },
+          orderBy: { readAt: "desc" },
+          take: 50,
+          include: { article: true },
+        })
+        .then((states) => states.map((s) => ({ article: s.article, read: s.read, saved: s.saved })))
+    : prisma.article
+        .findMany({
+          where: {
+            AND: [
+              {
+                ...(category ? { category } : {}),
+                ...(source ? { sourceName: source } : {}),
+                ...(query ? { title: { contains: query } } : {}),
+                ...(savedOnly ? { articleStates: { some: { userId, saved: true } } } : {}),
+                // duplicates are hidden only in the main view — Saved shows
+                // exactly what you actually saved
+                ...(isDefaultView ? { duplicateOfId: null } : {}),
+              },
+              notDismissedByUser,
+              visibleContentFilter(),
+              categoryVisibility,
+              // old news only disappears from the main view; in "catch-up"
+              // mode the window stretches to cover the whole absence
+              // instead of a fixed 7 days
+              ...(isDefaultView ? [statsDateFilter] : []),
+            ],
+          },
+          orderBy: [{ priority: "desc" }, { publishedAt: "desc" }],
+          take: 50,
+          include: { articleStates: { where: { userId } } },
+        })
+        .then((rows) =>
+          rows.map(({ articleStates, ...article }) => ({
+            article,
+            read: articleStates[0]?.read ?? false,
+            saved: articleStates[0]?.saved ?? false,
+          })),
+        );
+
+  const [rows, counts, brief, newToday, mustRead, pendingClassification, sourceRows] = await Promise.all([
+    rowsPromise,
+    getNavCounts(userId, hiddenCategories, isHomepage ? statsDateFilter : undefined),
+    catchUp.isCatchUp && catchUp.since
+      ? generateCatchUpBrief(userId, catchUp.since, locale, hiddenCategories)
+      : isHomepage
+        ? getTodaysBrief()
+        : Promise.resolve(null),
+    prisma.article.count({
+      where: {
+        AND: [
+          { fetchedAt: { gte: startOfToday } },
+          notDismissedByUser,
+          { duplicateOfId: null },
+          visibleContentFilter(),
+          categoryVisibility,
+        ],
+      },
+    }),
+    prisma.article.count({
+      where: {
+        AND: [
+          { priority: 5, duplicateOfId: null },
+          { NOT: { articleStates: { some: { userId, OR: [{ read: true }, { dismissed: true }] } } } },
+          visibleContentFilter(),
+          categoryVisibility,
+          statsDateFilter,
+        ],
+      },
+    }),
+    prisma.article.count({ where: { AND: [{ classifiedAt: null }, notDismissedByUser] } }),
+    prisma.article.findMany({
+      distinct: ["sourceName"],
+      select: { sourceName: true },
+      orderBy: { sourceName: "asc" },
+    }),
+  ]);
 
   const sources = sourceRows.map((row) => row.sourceName);
 
-  const threadIds = [...new Set(rows.map((r) => r.threadId).filter((id) => id !== null))];
+  const threadIds = [...new Set(rows.map((r) => r.article.threadId).filter((id) => id !== null))];
   const threadCounts =
     threadIds.length > 0
       ? await prisma.article.groupBy({
@@ -130,23 +187,28 @@ export default async function Home({ searchParams }: PageProps<"/">) {
     threadCounts.map((t) => [t.threadId as string, t._count._all]),
   );
 
-  const articles: ArticleListItem[] = rows.map((row) => ({
-    id: row.id,
-    url: row.url,
-    title: row.title,
-    summary: row.summary,
-    sourceName: row.sourceName,
-    category: toCategory(row.category),
-    priority: row.priority,
-    publishedAt: row.publishedAt,
-    read: row.read,
-    saved: row.saved,
-    consensusSources: row.consensusSources,
-    qualityLabel: row.qualityLabel,
-    qualityNote: row.qualityNote,
-    threadId: row.threadId,
-    threadCount: row.threadId ? (threadCountMap.get(row.threadId) ?? 1) : 1,
+  const articles: ArticleListItem[] = rows.map(({ article, read, saved }) => ({
+    id: article.id,
+    url: article.url,
+    title: article.title,
+    summary: article.summary,
+    sourceName: article.sourceName,
+    category: toCategory(article.category),
+    priority: article.priority,
+    publishedAt: article.publishedAt,
+    read,
+    saved,
+    consensusSources: article.consensusSources,
+    qualityLabel: article.qualityLabel,
+    qualityNote: article.qualityNote,
+    threadId: article.threadId,
+    threadCount: article.threadId ? (threadCountMap.get(article.threadId) ?? 1) : 1,
   }));
+
+  const TOP_PICKS_LIMIT = 5;
+  const topPicks = isHomepage
+    ? articles.filter((a) => !a.read && (a.priority ?? 0) >= 4).slice(0, TOP_PICKS_LIMIT)
+    : [];
 
   const activeNav = historyOnly ? "history" : savedOnly ? "saved" : "all";
   const emptyVariant = query
@@ -160,44 +222,40 @@ export default async function Home({ searchParams }: PageProps<"/">) {
   return (
     <>
       <VisitTracker />
-      <Sidebar active={activeNav} counts={counts} />
+      <Sidebar active={activeNav} counts={counts} locale={locale} />
 
       <div className="flex-1 flex flex-col lg:flex-row">
         <main className="flex-1 min-w-0 px-4 sm:px-6 py-6">
           <div className="mb-6">
             <h1 className="font-serif text-2xl text-text">
-              {historyOnly
-                ? "Historia"
-                : savedOnly
-                  ? "Zapisane"
-                  : "Dzisiejsze newsy"}
+              {historyOnly ? dict.home.titleHistory : savedOnly ? dict.home.titleSaved : dict.home.title}
             </h1>
             <p className="text-sm text-text-muted mt-1">
-              {historyOnly
-                ? "Wszystko, co otworzyłeś — niezależnie od tego, czy zostało zapisane."
-                : "Wyselekcjonowane przez AI. Posortowane wg tego, co warto przeczytać."}
+              {historyOnly ? dict.home.subtitleHistory : dict.home.subtitleDefault}
             </p>
           </div>
 
           {brief && catchUp.isCatchUp ? (
-            <CatchUpBanner content={brief} since={sinceLabel(catchUp.hoursAway)} />
+            <CatchUpBanner content={brief} since={sinceLabel(catchUp.hoursAway, locale)} locale={locale} />
           ) : (
-            brief && <DailyBrief content={brief} />
+            brief && <DailyBrief content={brief} locale={locale} />
           )}
 
-          <SearchBar filters={filters} />
+          <TopPicks items={topPicks} locale={locale} />
+
+          <SearchBar filters={filters} locale={locale} />
 
           <div className="mb-5 flex items-center justify-between gap-3 flex-wrap">
-            <CategoryTabs filters={filters} />
-            <SourceFilter sources={sources} filters={filters} />
+            <CategoryTabs filters={filters} hiddenCategories={hiddenCategories} locale={locale} />
+            <SourceFilter sources={sources} filters={filters} locale={locale} />
           </div>
 
           {articles.length === 0 ? (
-            <EmptyState variant={emptyVariant} query={query} />
+            <EmptyState variant={emptyVariant} query={query} locale={locale} />
           ) : (
             <div className="space-y-3">
               {articles.map((article) => (
-                <ArticleRow key={article.id} article={article} />
+                <ArticleRow key={article.id} article={article} locale={locale} />
               ))}
             </div>
           )}
@@ -208,6 +266,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
             newToday={newToday}
             mustRead={mustRead}
             pendingClassification={pendingClassification}
+            locale={locale}
           />
         </aside>
       </div>

@@ -1,7 +1,14 @@
+import type { Locale } from "@/lib/i18n/locale";
 import { tierFor } from "@/lib/priority";
 
-export function PriorityBadge({ priority }: { priority: number | null }) {
-  const tier = tierFor(priority);
+export function PriorityBadge({
+  priority,
+  locale = "pl",
+}: {
+  priority: number | null;
+  locale?: Locale;
+}) {
+  const tier = tierFor(priority, locale);
 
   return (
     <span className="inline-flex items-center gap-2 shrink-0">

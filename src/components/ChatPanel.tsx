@@ -1,18 +1,28 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { CategoryDot } from "@/components/CategoryDot";
 import { ReadTrackingLink } from "@/components/ReadTrackingLink";
+import type { Category } from "@/lib/categories";
+import { dictionaries } from "@/lib/i18n/dictionary";
+import type { Locale } from "@/lib/i18n/locale";
 
 type Source = { id: string; title: string; url: string };
 type Message = { role: "user" | "assistant"; content: string; sources?: Source[] };
+type FocusArticle = { id: string; title: string; url: string; sourceName: string; category: Category };
 
 export function ChatPanel({
   contextCount,
-  suggestions,
+  focusArticle,
+  locale = "pl",
 }: {
   contextCount: number;
-  suggestions: string[];
+  focusArticle?: FocusArticle | null;
+  locale?: Locale;
 }) {
+  const router = useRouter();
+  const dict = dictionaries[locale].ask;
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [pending, setPending] = useState(false);
@@ -37,6 +47,7 @@ export function ChatPanel({
         body: JSON.stringify({
           question,
           history: messages.map((m) => ({ role: m.role, content: m.content })),
+          articleId: focusArticle?.id,
         }),
       });
       const data = await res.json();
@@ -44,7 +55,7 @@ export function ChatPanel({
       if (!res.ok) {
         setMessages([
           ...nextMessages,
-          { role: "assistant", content: data.error ?? "Coś poszło nie tak." },
+          { role: "assistant", content: data.error ?? dict.genericError },
         ]);
         return;
       }
@@ -54,10 +65,7 @@ export function ChatPanel({
         { role: "assistant", content: data.answer, sources: data.sources },
       ]);
     } catch {
-      setMessages([
-        ...nextMessages,
-        { role: "assistant", content: "Nie udało się połączyć z serwerem." },
-      ]);
+      setMessages([...nextMessages, { role: "assistant", content: dict.connectionError }]);
     } finally {
       setPending(false);
     }
@@ -68,16 +76,42 @@ export function ChatPanel({
     submitQuestion(input.trim());
   }
 
+  function clearFocus() {
+    router.replace("/ask");
+  }
+
+  const suggestions = focusArticle ? dict.focusSuggestions : dict.suggestions;
+
   return (
     <div className="flex-1 flex flex-col lg:flex-row gap-6">
       <div className="flex-1 min-w-0">
+        {focusArticle && (
+          <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-raised px-3 py-2 mb-4">
+            <span className="text-xs text-text-faint shrink-0">{dict.focusBadge}</span>
+            <CategoryDot category={focusArticle.category} locale={locale} />
+            <ReadTrackingLink
+              articleId={focusArticle.id}
+              url={focusArticle.url}
+              className="flex-1 min-w-0 truncate text-sm text-text hover:text-white transition-colors"
+            >
+              {focusArticle.title}
+            </ReadTrackingLink>
+            <button
+              type="button"
+              onClick={clearFocus}
+              aria-label={dict.clearFocus}
+              title={dict.clearFocus}
+              className="shrink-0 text-text-faint hover:text-text transition-colors"
+            >
+              <svg width="12" height="12" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                <path d="M1 1l12 12M13 1L1 13" />
+              </svg>
+            </button>
+          </div>
+        )}
+
         <div className="space-y-4 mb-6">
-          {messages.length === 0 && (
-            <p className="text-sm text-text-faint">
-              Wybierz podpowiedź obok albo napisz własne pytanie — odpowiadam
-              tylko na podstawie newsów z Twojej bazy.
-            </p>
-          )}
+          {messages.length === 0 && <p className="text-sm text-text-faint">{dict.emptyHint}</p>}
 
           {messages.map((message, i) => (
             <div key={i} className={message.role === "user" ? "text-right" : ""}>
@@ -108,7 +142,7 @@ export function ChatPanel({
             </div>
           ))}
 
-          {pending && <p className="text-sm text-text-faint">Szukam w bazie…</p>}
+          {pending && <p className="text-sm text-text-faint">{dict.searching}</p>}
           <div ref={bottomRef} />
         </div>
 
@@ -117,7 +151,7 @@ export function ChatPanel({
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Zapytaj o newsy…"
+            placeholder={dict.inputPlaceholder}
             className="flex-1 rounded-md border border-border bg-surface px-3 py-2 text-sm text-text placeholder:text-text-faint focus:outline-none focus:border-signal transition-colors"
           />
           <button
@@ -125,22 +159,19 @@ export function ChatPanel({
             disabled={pending || !input.trim()}
             className="rounded-md border border-border px-4 py-2 text-sm text-text hover:bg-surface disabled:opacity-50 transition-colors"
           >
-            Zapytaj
+            {dict.submit}
           </button>
         </form>
       </div>
 
       <aside className="w-full lg:w-72 shrink-0 space-y-4">
         <div className="rounded-lg border border-border bg-surface p-4">
-          <h3 className="text-sm font-medium text-text mb-1">Zasięg</h3>
-          <p className="text-sm text-text-muted leading-relaxed">
-            Ostatnie 14 dni, {contextCount} newsów w bazie. Pytania o starsze
-            albo spoza tematyki AI/tech/gier zostaną uczciwie odrzucone.
-          </p>
+          <h3 className="text-sm font-medium text-text mb-1">{dict.reachHeading}</h3>
+          <p className="text-sm text-text-muted leading-relaxed">{dict.reachBody(contextCount)}</p>
         </div>
 
         <div className="rounded-lg border border-border bg-surface p-4">
-          <h3 className="text-sm font-medium text-text mb-3">Podpowiedzi</h3>
+          <h3 className="text-sm font-medium text-text mb-3">{dict.suggestionsHeading}</h3>
           <div className="flex flex-col gap-1">
             {suggestions.map((suggestion) => (
               <button

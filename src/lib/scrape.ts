@@ -24,8 +24,8 @@ export async function saveArticles(articles: NormalizedArticle[]) {
       if (existing) {
         await prisma.article.update({
           where: { url: article.url },
-          // tylko sygnały ze źródła się odświeżają — klasyfikacja AI i stan
-          // czytelnika (przeczytane/zapisane) zostają nietknięte
+          // only source signals get refreshed — AI classification and
+          // reader state (read/saved) stay untouched
           data: {
             score: article.score,
             commentsCount: article.commentsCount,
@@ -49,9 +49,9 @@ export async function saveArticles(articles: NormalizedArticle[]) {
         created += 1;
       }
     } catch {
-      // najczęściej wyścig przy równoczesnym scrapowaniu (ten sam URL
-      // wstawiony przez inne żądanie między sprawdzeniem a zapisem) —
-      // pomijamy ten jeden artykuł, reszta partii ma jechać dalej
+      // most often a race from concurrent scraping (the same URL inserted
+      // by another request between the check and the write) — skip this
+      // one article, the rest of the batch keeps going
       skipped += 1;
     }
   }

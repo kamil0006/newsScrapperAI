@@ -1,32 +1,20 @@
-const MESSAGES = {
-  all: {
-    title: "Lista jest jeszcze pusta",
-    body: "Baza nie ma żadnych newsów. Kliknij „Pobierz nowe newsy” w panelu bocznym.",
-  },
-  saved: {
-    title: "Nic jeszcze nie zapisałeś",
-    body: "Kliknij ikonę zakładki przy newsie, żeby wrócić do niego później.",
-  },
-  history: {
-    title: "Historia jest pusta",
-    body: "Newsy, które otworzysz, pojawią się tutaj — nawet jeśli odznaczysz je jako zapisane.",
-  },
-} as const;
+import { dictionaries } from "@/lib/i18n/dictionary";
+import type { Locale } from "@/lib/i18n/locale";
 
 export function EmptyState({
   variant = "all",
   query,
+  locale = "pl",
 }: {
-  variant?: keyof typeof MESSAGES | "search";
+  variant?: "all" | "saved" | "history" | "search";
   query?: string;
+  locale?: Locale;
 }) {
+  const dict = dictionaries[locale].emptyState;
   const { title, body } =
     variant === "search"
-      ? {
-          title: "Brak wyników",
-          body: `Nic nie pasuje do „${query}”. Spróbuj innego hasła.`,
-        }
-      : MESSAGES[variant];
+      ? { title: dict.search.title, body: dict.search.body(query ?? "") }
+      : dict[variant];
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center text-center px-6 py-24">

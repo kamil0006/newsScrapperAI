@@ -16,71 +16,100 @@ model Article {
 
   // source
   sourceType    String // "hackernews" | "rss"
-  sourceName    String // np. "Hacker News", "r/technology", "The Verge"
-  externalId    String? // id posta w źródle, do deduplikacji
+  sourceName    String // e.g. "Hacker News", "r/technology", "The Verge"
+  externalId    String? // id of the post at the source, for deduplication
   url           String    @unique
   title         String
-  content       String? // excerpt/treść użyta do klasyfikacji
-  score         Int? // punkty/upvotes ze źródła
+  content       String? // excerpt/text used for classification
+  score         Int? // points/upvotes from the source
   commentsCount Int?
   publishedAt   DateTime?
   fetchedAt     DateTime  @default(now())
 
-  // klasyfikacja AI
+  // AI classification
   category      String? // "AI" | "Gaming" | "Tech" | "Inne"
-  priority      Int? // 1 (pomiń) - 5 (koniecznie przeczytaj)
+  priority      Int? // 1 (skip) - 5 (must read)
   worthReading  Boolean?
   summary       String?
   classifiedAt  DateTime?
 
-  // stan czytelnika
-  read          Boolean   @default(false)
-  readAt        DateTime? // kiedy ostatnio otwarty — do widoku "Historia"
-  saved         Boolean   @default(false)
-
-  // feedback do dalszego dostrajania priorytetów
-  dismissed     Boolean   @default(false)
-  dismissedAt   DateTime?
-
-  // deduplikacja tego samego newsa z różnych źródeł
+  // deduplication of the same story across different sources
   duplicateOfId String?
   duplicateOf   Article?  @relation("Duplicates", fields: [duplicateOfId], references: [id])
   duplicates    Article[] @relation("Duplicates")
 
-  // liczba niezależnych źródeł, które opisały tę samą historię (tylko na
-  // artykule kanonicznym — duplikaty wskazujące na niego mają tu zawsze 1)
+  // number of independent sources that covered the same story (only set on
+  // the canonical article — duplicates pointing to it always stay at 1)
   consensusSources Int @default(1)
 
-  // rzetelność treści — liczona TYLKO gdy mamy pełny tekst artykułu
-  // (pogłębiona klasyfikacja), inaczej zostaje null, bo z samego tytułu
-  // nie da się ocenić, czy to lanie wody
+  // content reliability — only computed once we have the full article text
+  // (deep classification), otherwise stays null, since a title alone isn't
+  // enough to judge whether something is fluff
   qualityLabel String? // "rzetelny" | "przeciętny" | "lanie_wody"
-  qualityNote  String? // jednozdaniowe uzasadnienie oceny
+  qualityNote  String? // one-sentence justification for the rating
 
-  // wątek tematyczny — grupuje kolejne aktualizacje tej samej rozwijającej
-  // się historii w czasie (podobne, ale NIE identyczne jak duplikat).
-  // Wartość to id artykułu, który otworzył wątek; ten artykuł ma tu swoje
-  // własne id, gdy wątek już się utworzy.
+  // topic thread — groups successive updates to the same unfolding story
+  // over time (related, but NOT identical like a duplicate).
+  // The value is the id of the article that started the thread; that
+  // article carries its own id here once the thread exists.
   threadId String?
 
-  // twarde filtry treści — stosowane wszędzie, nie tylko w głównym widoku
-  sponsored Boolean @default(false) // reklama/afiliacja/promo, wykryte słowami kluczowymi ALBO przez AI
-  language  String? // "pl" | "en" | "other" — null dopóki nie sklasyfikowane
+  // hard content filters — applied everywhere, not just the main view
+  sponsored Boolean @default(false) // ad/affiliate/promo, detected via keywords OR by AI
+  language  String? // "pl" | "en" | "other" — null until classified
+
+  articleStates ArticleState[]
 
   @@index([sourceType])
   @@index([category])
   @@index([priority])
   @@index([publishedAt])
-  @@index([readAt])
   @@index([duplicateOfId])
-  @@index([dismissed])
   @@index([threadId])
   @@index([sponsored])
   @@index([language])
 }
 
-// codzienny akapit AI syntetyzujący newsy z ostatnich 24h, generowany
-// przy każdym scrapowaniu i nadpisywany dla bieżącej daty
+// a registered account — email+password auth, no email verification yet
+// (needs a purchased domain + Resend, which comes later)
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  // comma-separated Category values this user doesn't want to see —
+  // everyone starts seeing everything, hiding is opt-out per account
+  hiddenCategories String @default("")
+
+  articleStates ArticleState[]
+  visitState    VisitState?
+}
+
+// per-user reading state for an article — read/saved/dismissed used to live
+// directly on Article, but once there's more than one account those flags
+// must be personal, not shared across everyone using the app
+model ArticleState {
+  id          String    @id @default(cuid())
+  userId      String
+  articleId   String
+  read        Boolean   @default(false)
+  readAt      DateTime?
+  saved       Boolean   @default(false)
+  dismissed   Boolean   @default(false)
+  dismissedAt DateTime?
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, articleId])
+  @@index([userId])
+  @@index([articleId])
+  @@index([dismissed])
+}
+
+// daily AI-written paragraph synthesizing the last 24h of news, generated
+// on every scrape run and overwritten for the current date
 model DailyBrief {
   id        String   @id @default(cuid())
   date      String   @unique // "YYYY-MM-DD"
@@ -88,9 +117,12 @@ model DailyBrief {
   createdAt DateTime @default(now())
 }
 
-// pojedynczy wiersz (id=1) — kiedy ostatni raz realnie odwiedzono stronę
-// główną, do trybu "dogoń się" po dłuższej nieobecności
+// when a user last actually visited the homepage — used for "catch-up"
+// mode after a longer absence, one row per account
 model VisitState {
-  id            Int      @id @default(1)
+  id            String   @id @default(cuid())
+  userId        String   @unique
   lastVisitedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

@@ -1,21 +1,24 @@
 import OpenAI from "openai";
 import { prisma } from "@/lib/prisma";
+import { languageDirective } from "@/lib/ai/languageDirective";
+import { applyQualityClamp, clampPriority } from "@/lib/ai/priorityRules";
 import { CATEGORIES, toCategory } from "@/lib/categories";
 import { extractArticleText } from "@/lib/extract";
+import type { Locale } from "@/lib/i18n/locale";
 
-// batche większe niż strukturalnie potrzeba — sam prompt systemowy (kryteria
-// oceny) jest wysyłany raz na batch, więc im mniej wywołań, tym mniej
-// powtórzonych tokenów bez żadnego wpływu na jakość pojedynczej oceny
+// batches larger than structurally needed — the system prompt (grading
+// criteria) itself is sent once per batch, so fewer calls means fewer
+// repeated tokens with no impact on the quality of any single rating
 const BATCH_SIZE = 20;
 const DEEP_BATCH_SIZE = 5;
 const MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 
-// artykuły, które po pierwszym rzucie (sam tytuł) wyglądają na tyle obiecująco,
-// że warto pobrać ich pełną treść i doklasyfikować dokładniej
+// articles that look promising enough after the first pass (title only)
+// to be worth fetching in full and re-classifying more thoroughly
 const DEEPEN_PRIORITY_THRESHOLD = 3;
 const MAX_DEEPEN_PER_RUN = 15;
-// zgrubna selekcja z tytułu — dokładność i tak dobija się w etapie pogłębionym,
-// więc krótszy excerpt tu nie kosztuje jakości
+// rough triage from the title — accuracy gets refined in the deep pass
+// anyway, so a shorter excerpt here doesn't cost quality
 const SHALLOW_EXCERPT_CHARS = 350;
 const DEEP_EXCERPT_CHARS = 3000;
 const RICH_CONTENT_THRESHOLD = 300;
@@ -27,12 +30,19 @@ type QualityLabel = (typeof QUALITY_LABELS)[number];
 const LANGUAGES = ["pl", "en", "other"] as const;
 type Language = (typeof LANGUAGES)[number];
 
-const BASE_SYSTEM_PROMPT = `Oceniasz newsy dla developera, który śledzi AI, technologię i gry, i nie ma czasu przeglądać wszystkiego sam.
+const BASE_SYSTEM_PROMPT = `Oceniasz newsy dla osób śledzących AI, technologię, gry, biznes/startupy, naukę i rozrywkę (filmy/seriale), które nie mają czasu przeglądać wszystkiego samemu.
 
 Dla każdego newsa ustal:
-- category: jedna z ${CATEGORIES.join(", ")} — "Inne" tylko gdy naprawdę nie pasuje do AI/Gaming/Tech.
+- category: jedna z ${CATEGORIES.join(", ")}. Zasady wyboru:
+  - "AI": konkretnie o sztucznej inteligencji — modele, badania AI, firmy/produkty AI. AI-research ma priorytet nad "Science".
+  - "Gaming": branża gier wideo — recenzje, aktualizacje, wydania.
+  - "Tech": ogólna technologia, która nie pasuje lepiej do "AI" czy "Gaming" — sprzęt, oprogramowanie, internet, cyberbezpieczeństwo.
+  - "Business": startupy, finansowanie, rynki, decyzje korporacyjne/biznesowe — także spółek technologicznych, jeśli news jest głównie o pieniądzach/strategii, a nie o samym produkcie.
+  - "Science": odkrycia naukowe, kosmos, badania NIE związane z AI.
+  - "Entertainment": filmy, seriale, streaming, popkultura.
+  - "Inne": tylko gdy naprawdę nic z powyższych nie pasuje.
 - priority: liczba całkowita 1-5, gdzie 5 = koniecznie przeczytaj (przełomowe, unikalne, realnie zmienia coś w branży), 3 = warto rzucić okiem, 1 = pomiń (marketing, drobna aktualizacja, mało istotne, duplikat popularnego newsa).
-- summary: 1-2 zdania po polsku, konkretnie o co chodzi — bez lania wody, bez powtarzania tytułu.
+- summary: 1-2 zdania, konkretnie o co chodzi — bez lania wody, bez powtarzania tytułu.
 - quality: ocena rzetelności treści — TYLKO jeśli w excerpt masz realny fragment artykułu (nie sam tytuł, nie pusty/krótszy niż ok. 300 znaków tekst). Jeśli podstaw brak, zwróć quality: null i qualityNote: null. Gdy masz realną treść, wybierz jedną z:
   - "rzetelny": konkretne fakty, źródła, liczby, cytaty — nie tylko ogólniki
   - "przeciętny": ma jakąś treść, ale płytko albo ogólnikowo
@@ -44,17 +54,19 @@ Dla każdego newsa ustal:
 Odpowiadaj wyłącznie w formacie JSON zgodnym ze schematem.`;
 
 async function buildFeedbackContext(): Promise<string> {
-  const dismissed = await prisma.article.findMany({
+  // dismissals are personal now (per account), but the classifier is shared —
+  // treat any user's dismissal as a signal, same as before multi-user accounts
+  const dismissed = await prisma.articleState.findMany({
     where: { dismissed: true },
     orderBy: { dismissedAt: "desc" },
     take: MAX_FEEDBACK_EXAMPLES,
-    select: { title: true, category: true },
+    select: { article: { select: { title: true, category: true } } },
   });
 
   if (dismissed.length === 0) return "";
 
   const examples = dismissed
-    .map((d) => `- [${d.category ?? "?"}] ${d.title}`)
+    .map((d) => `- [${d.article.category ?? "?"}] ${d.article.title}`)
     .join("\n");
 
   return `\n\nUżytkownik wcześniej oznaczył jako nieistotne newsy podobne do tych — jeśli trafi się coś bliskiego tematycznie, obniż priorytet:\n${examples}`;
@@ -94,15 +106,6 @@ function getClient(): OpenAI {
     throw new Error("Brak OPENAI_API_KEY w .env");
   }
   return new OpenAI({ apiKey });
-}
-
-function clampPriority(value: number): number {
-  return Math.min(5, Math.max(1, Math.round(value)));
-}
-
-// lanie wody nie powinno być "koniecznie przeczytaj" niezależnie od tematu
-function applyQualityClamp(priority: number, quality: QualityLabel | null): number {
-  return quality === "lanie_wody" ? Math.min(priority, 2) : priority;
 }
 
 async function classifyBatch(
@@ -195,10 +198,10 @@ async function deepenArticles(
   let deepened = 0;
   let usage: TokenUsage = { promptTokens: 0, completionTokens: 0 };
 
-  // pobieranie pełnej treści zostaje per-artykuł (to zwykły fetch, nie
-  // wywołanie AI), ale klasyfikujemy grupami — jedno wywołanie modelu na
-  // kilka artykułów naraz zamiast osobno, żeby nie powtarzać promptu
-  // systemowego przy każdym pojedynczym artykule
+  // fetching full text stays per-article (that's a plain fetch, not an
+  // AI call), but classification runs in groups — one model call for
+  // several articles at once instead of one each, to avoid repeating the
+  // system prompt for every single article
   for (let i = 0; i < ordered.length; i += DEEP_BATCH_SIZE) {
     const group = ordered.slice(i, i + DEEP_BATCH_SIZE);
 
@@ -246,12 +249,16 @@ async function deepenArticles(
   return { deepened, usage };
 }
 
-export async function classifyPendingArticles(limit = 60) {
+export async function classifyPendingArticles(limit = 60, locale: Locale = "pl") {
   const client = getClient();
-  const systemPrompt = BASE_SYSTEM_PROMPT + (await buildFeedbackContext());
+  const systemPrompt =
+    BASE_SYSTEM_PROMPT + (await buildFeedbackContext()) + languageDirective(locale);
 
+  // newest first — after a long gap, a backlog of old articles shouldn't
+  // delay classifying today's news behind it
   const pending = await prisma.article.findMany({
     where: { classifiedAt: null },
+    orderBy: { publishedAt: "desc" },
     take: limit,
     select: { id: true, title: true, sourceName: true, content: true, url: true },
   });
@@ -275,8 +282,9 @@ export async function classifyPendingArticles(limit = 60) {
       if (!source) continue;
 
       const hasRichContent = (source.content?.length ?? 0) > RICH_CONTENT_THRESHOLD;
-      // przy realnej treści już na starcie (self-posty HN) model ocenia
-      // rzetelność już teraz — przy samym tytule prompt każe mu zwrócić null
+      // when real content is already present up front (HN self-posts), the
+      // model rates quality right away — with just a title, the prompt tells
+      // it to return null
       const priority = applyQualityClamp(clampPriority(result.priority), result.quality);
 
       await prisma.article.update({

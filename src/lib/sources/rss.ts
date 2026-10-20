@@ -17,6 +17,20 @@ const FEEDS: FeedConfig[] = [
   { url: "https://www.eurogamer.net/feed", sourceName: "Eurogamer" },
   { url: "https://www.polygon.com/rss/index.xml", sourceName: "Polygon" },
   { url: "https://kotaku.com/rss", sourceName: "Kotaku" },
+
+  // business/startups/finance
+  { url: "https://techcrunch.com/category/startups/feed/", sourceName: "TechCrunch Startups" },
+  { url: "https://www.cnbc.com/id/10001147/device/rss/rss.html", sourceName: "CNBC" },
+  { url: "https://feeds.content.dowjones.io/public/rss/mw_topstories", sourceName: "MarketWatch" },
+
+  // science/space
+  { url: "https://www.nasa.gov/feed/", sourceName: "NASA" },
+  { url: "https://www.space.com/feeds/all", sourceName: "Space.com" },
+
+  // entertainment/movies/TV
+  { url: "https://www.hollywoodreporter.com/feed/", sourceName: "The Hollywood Reporter" },
+  { url: "https://variety.com/feed/", sourceName: "Variety" },
+  { url: "https://collider.com/feed/", sourceName: "Collider" },
 ];
 
 const MAX_ITEMS_PER_FEED = 15;

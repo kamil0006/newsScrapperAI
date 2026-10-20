@@ -1,36 +1,64 @@
 import Link from "next/link";
+import { LocaleToggle } from "@/components/LocaleToggle";
+import { Logo } from "@/components/Logo";
 import { RefreshButton } from "@/components/RefreshButton";
+import { logout } from "@/lib/auth/actions";
+import { dictionaries } from "@/lib/i18n/dictionary";
+import type { Locale } from "@/lib/i18n/locale";
 
 type CountKey = "all" | "saved" | "history";
 
-const NAV: {
-  href: string;
-  label: string;
-  match: CountKey | "ask";
-  countKey: CountKey | null;
-}[] = [
-  { href: "/", label: "Wszystkie", match: "all", countKey: "all" },
-  { href: "/?saved=1", label: "Zapisane", match: "saved", countKey: "saved" },
-  { href: "/?history=1", label: "Historia", match: "history", countKey: "history" },
-  { href: "/ask", label: "Zapytaj AI", match: "ask", countKey: null },
-];
+function LogoutIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="shrink-0"
+    >
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <line x1="21" y1="12" x2="9" y2="12" />
+    </svg>
+  );
+}
 
 export function Sidebar({
   active,
   counts,
+  locale = "pl",
 }: {
-  active: CountKey | "ask";
+  active: CountKey | "ask" | "settings";
   counts: Record<CountKey, number>;
+  locale?: Locale;
 }) {
+  const dict = dictionaries[locale];
+  const NAV: {
+    href: string;
+    label: string;
+    match: CountKey | "ask" | "settings";
+    countKey: CountKey | null;
+  }[] = [
+    { href: "/", label: dict.common.all, match: "all", countKey: "all" },
+    { href: "/?saved=1", label: dict.common.saved, match: "saved", countKey: "saved" },
+    { href: "/?history=1", label: dict.common.history, match: "history", countKey: "history" },
+    { href: "/ask", label: dict.common.ask, match: "ask", countKey: null },
+    { href: "/settings", label: dict.common.settings, match: "settings", countKey: null },
+  ];
+
   return (
-    <aside className="w-full sm:w-56 shrink-0 border-b sm:border-b-0 sm:border-r border-border px-4 sm:px-5 py-5 flex flex-row sm:flex-col gap-4 sm:gap-8 items-center sm:items-stretch">
-      <div>
-        <span className="font-serif text-lg tracking-tight text-text">
-          newsScrapperAI
+    <aside className="w-full sm:w-56 shrink-0 border-b sm:border-b-0 sm:border-r border-border px-4 sm:px-5 py-5 flex flex-row sm:flex-col gap-4 sm:gap-6 items-center sm:items-stretch sm:sticky sm:top-0 sm:h-screen">
+      <div className="flex items-center justify-between sm:block">
+        <Logo />
+        <span className="sm:hidden">
+          <LocaleToggle locale={locale} />
         </span>
-        <p className="hidden sm:block text-xs text-text-faint mt-1">
-          Mniej scrollowania, więcej sygnału.
-        </p>
+        <p className="hidden sm:block text-xs text-text-faint mt-2">{dict.sidebar.tagline}</p>
       </div>
 
       <nav className="flex flex-row sm:flex-col gap-1 flex-1 sm:flex-none">
@@ -54,7 +82,20 @@ export function Sidebar({
         ))}
       </nav>
 
-      <RefreshButton />
+      <div className="hidden sm:flex sm:flex-col sm:gap-3">
+        <RefreshButton locale={locale} />
+        <LocaleToggle locale={locale} />
+      </div>
+
+      <form action={logout} className="hidden sm:block sm:mt-auto pt-3 border-t border-border">
+        <button
+          type="submit"
+          className="w-full flex items-center gap-2 -mx-2 px-2 py-1.5 rounded-md text-sm text-text-faint hover:text-text hover:bg-surface transition-colors"
+        >
+          <LogoutIcon />
+          {dict.common.logout}
+        </button>
+      </form>
     </aside>
   );
 }

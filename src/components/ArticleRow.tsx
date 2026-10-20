@@ -1,13 +1,24 @@
 import Link from "next/link";
 import { ArticleTitleLink } from "@/components/ArticleTitleLink";
 import { CategoryDot } from "@/components/CategoryDot";
+import { DiscussLink } from "@/components/DiscussLink";
 import { DismissButton } from "@/components/DismissButton";
 import { PriorityBadge } from "@/components/PriorityBadge";
 import { SaveToggle } from "@/components/SaveToggle";
+import { dictionaries } from "@/lib/i18n/dictionary";
+import type { Locale } from "@/lib/i18n/locale";
 import { pluralSources, relativeTime } from "@/lib/format";
 import type { ArticleListItem } from "@/lib/types";
 
-export function ArticleRow({ article }: { article: ArticleListItem }) {
+export function ArticleRow({
+  article,
+  locale = "pl",
+}: {
+  article: ArticleListItem;
+  locale?: Locale;
+}) {
+  const dict = dictionaries[locale];
+
   return (
     <article
       className={`rounded-lg border border-border bg-surface p-4 space-y-2 transition-opacity ${
@@ -15,11 +26,11 @@ export function ArticleRow({ article }: { article: ArticleListItem }) {
       }`}
     >
       <div className="flex items-center gap-3 flex-wrap">
-        <PriorityBadge priority={article.priority} />
-        <CategoryDot category={article.category} />
+        <PriorityBadge priority={article.priority} locale={locale} />
+        <CategoryDot category={article.category} locale={locale} />
         <span className="text-xs text-text-faint">{article.sourceName}</span>
         <span className="text-xs text-text-faint">
-          {relativeTime(article.publishedAt)}
+          {relativeTime(article.publishedAt, locale)}
         </span>
         {article.consensusSources > 1 && (
           <span
@@ -29,7 +40,7 @@ export function ArticleRow({ article }: { article: ArticleListItem }) {
               background: "color-mix(in srgb, var(--signal) 16%, transparent)",
             }}
           >
-            {pluralSources(article.consensusSources)}
+            {pluralSources(article.consensusSources, locale)}
           </span>
         )}
         {article.threadId && article.threadCount > 1 && (
@@ -37,12 +48,13 @@ export function ArticleRow({ article }: { article: ArticleListItem }) {
             href={`/thread/${article.threadId}`}
             className="text-xs font-medium px-2 py-0.5 rounded-full border border-border text-text-muted hover:text-text hover:border-text-faint transition-colors"
           >
-            Wątek · {article.threadCount}
+            {dict.article.thread} · {article.threadCount}
           </Link>
         )}
         <span className="ml-auto flex items-center gap-3">
-          <SaveToggle articleId={article.id} initialSaved={article.saved} />
-          <DismissButton articleId={article.id} />
+          <SaveToggle articleId={article.id} initialSaved={article.saved} locale={locale} />
+          <DiscussLink articleId={article.id} locale={locale} />
+          <DismissButton articleId={article.id} locale={locale} />
         </span>
       </div>
 
@@ -58,9 +70,7 @@ export function ArticleRow({ article }: { article: ArticleListItem }) {
           {article.summary}
         </p>
       ) : (
-        <p className="text-sm text-text-faint italic">
-          Jeszcze nie ocenione przez AI.
-        </p>
+        <p className="text-sm text-text-faint italic">{dict.article.notClassified}</p>
       )}
 
       {article.qualityLabel === "lanie_wody" && (
@@ -69,7 +79,8 @@ export function ArticleRow({ article }: { article: ArticleListItem }) {
           title={article.qualityNote ?? undefined}
         >
           <span aria-hidden>⚠</span>
-          Może być lanie wody{article.qualityNote ? ` — ${article.qualityNote}` : ""}
+          {dict.article.maybeFluff}
+          {article.qualityNote ? ` — ${article.qualityNote}` : ""}
         </p>
       )}
     </article>

@@ -1,13 +1,16 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { generateDailyBrief } from "@/lib/ai/brief";
 import { classifyPendingArticles } from "@/lib/ai/classify";
 import { markDuplicates } from "@/lib/dedupe";
+import { DEFAULT_LOCALE, isLocale, LOCALE_COOKIE_NAME } from "@/lib/i18n/locale";
 import { fetchHackerNewsTopStories } from "@/lib/sources/hackernews";
 import { fetchRssFeeds } from "@/lib/sources/rss";
 import { saveArticles } from "@/lib/scrape";
 import { linkThreads } from "@/lib/threads";
 
-export async function POST() {
+export async function POST(req: NextRequest) {
+  const cookieLocale = req.cookies.get(LOCALE_COOKIE_NAME)?.value;
+  const locale = isLocale(cookieLocale) ? cookieLocale : DEFAULT_LOCALE;
   const errors: string[] = [];
 
   const [hnResult, rssResult] = await Promise.allSettled([
@@ -31,13 +34,13 @@ export async function POST() {
 
   const saved = await saveArticles(articles);
 
-  // klasyfikacja musi iść przed wykrywaniem duplikatów — porównujemy
-  // streszczenia AI, których jeszcze nie ma dla świeżo zapisanych artykułów
+  // classification must run before duplicate detection — we compare
+  // AI summaries, which don't exist yet for freshly saved articles
   let classified = 0;
   let deepened = 0;
   let tokensUsed = { promptTokens: 0, completionTokens: 0 };
   try {
-    const result = await classifyPendingArticles();
+    const result = await classifyPendingArticles(60, locale);
     classified = result.classified;
     deepened = result.deepened;
     tokensUsed = result.tokensUsed;
@@ -68,7 +71,7 @@ export async function POST() {
 
   let brief = false;
   try {
-    brief = (await generateDailyBrief()) !== null;
+    brief = (await generateDailyBrief(locale)) !== null;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Nieznany błąd";
     errors.push(`Przegląd dnia: ${message}`);

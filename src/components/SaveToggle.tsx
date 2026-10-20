@@ -2,15 +2,20 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { dictionaries } from "@/lib/i18n/dictionary";
+import type { Locale } from "@/lib/i18n/locale";
 
 export function SaveToggle({
   articleId,
   initialSaved,
+  locale = "pl",
 }: {
   articleId: string;
   initialSaved: boolean;
+  locale?: Locale;
 }) {
   const router = useRouter();
+  const dict = dictionaries[locale].a11y;
   const [saved, setSaved] = useState(initialSaved);
   const [pending, setPending] = useState(false);
 
@@ -37,7 +42,7 @@ export function SaveToggle({
       onClick={handleClick}
       disabled={pending}
       aria-pressed={saved}
-      aria-label={saved ? "Usuń z zapisanych" : "Zapisz na później"}
+      aria-label={saved ? dict.unsave : dict.save}
       className="shrink-0 text-text-faint hover:text-text disabled:opacity-50 transition-colors"
     >
       {saved ? (

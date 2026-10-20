@@ -1,4 +1,4 @@
-// ile dni wstecz czat bierze pod uwagę przy odpowiadaniu na pytania
+// how many days back the chat considers when answering questions
 export const ASK_LOOKBACK_DAYS = 14;
 
 export function getAskSince(): Date {

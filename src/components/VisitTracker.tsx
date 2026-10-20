@@ -2,9 +2,9 @@
 
 import { useEffect } from "react";
 
-// zapisuje wizytę dopiero po realnym zamontowaniu w przeglądarce — w
-// odróżnieniu od odczytu w komponencie serwerowym, prefetch linków (np.
-// "Wszystkie" w sidebarze) nie odpala efektów, więc nie zafałszuje licznika
+// records a visit only after actually mounting in the browser — unlike a
+// read in a server component, link prefetching (e.g. "All" in the sidebar)
+// doesn't trigger effects, so it won't skew the counter
 export function VisitTracker() {
   useEffect(() => {
     fetch("/api/visit", { method: "POST" }).catch(() => {});

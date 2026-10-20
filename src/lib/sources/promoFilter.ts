@@ -1,6 +1,6 @@
-// szybki, tani filtr łapiący oczywiste kupony/kody rabatowe zanim w ogóle
-// trafią do bazy — subtelniejsze przypadki (natywna reklama itp.) łapie AI
-// przy klasyfikacji (pole `sponsored`)
+// a fast, cheap filter that catches obvious coupons/discount codes before
+// they even reach the database — subtler cases (native ads etc.) are
+// caught by AI during classification (the `sponsored` field)
 const PROMO_PATTERNS = [
   /\bpromo\s?codes?\b/i,
   /\bcoupons?\b/i,

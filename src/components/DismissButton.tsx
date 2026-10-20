@@ -2,10 +2,19 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { dictionaries } from "@/lib/i18n/dictionary";
+import type { Locale } from "@/lib/i18n/locale";
 
-export function DismissButton({ articleId }: { articleId: string }) {
+export function DismissButton({
+  articleId,
+  locale = "pl",
+}: {
+  articleId: string;
+  locale?: Locale;
+}) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
+  const dict = dictionaries[locale].a11y;
 
   async function handleClick() {
     setPending(true);
@@ -25,8 +34,8 @@ export function DismissButton({ articleId }: { articleId: string }) {
     <button
       onClick={handleClick}
       disabled={pending}
-      aria-label="Oznacz jako nieistotne"
-      title="Nieistotne — obniża priorytet podobnych newsów w przyszłości"
+      aria-label={dict.dismiss}
+      title={dict.dismissTitle}
       className="shrink-0 text-text-faint hover:text-[var(--priority-5)] disabled:opacity-50 transition-colors"
     >
       <svg

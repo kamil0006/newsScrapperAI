@@ -1,9 +1,9 @@
 import type { Prisma } from "@/generated/prisma/client";
 
-// twarde filtry treści — stosowane wszędzie (nie tylko w głównym widoku),
-// bo to obiektywne reguły dot. treści, a nie preferencja czytelnika jak
-// zapisane/przeczytane. `language: null` (jeszcze nie sklasyfikowany) nie
-// jest wykluczany — dopiero jawne "other" chowa artykuł.
+// hard content filters — applied everywhere (not just the main view),
+// since these are objective content rules, not a reader preference like
+// saved/read. `language: null` (not yet classified) is not excluded —
+// only an explicit "other" hides the article.
 export function visibleContentFilter(): Prisma.ArticleWhereInput {
   return {
     sponsored: false,

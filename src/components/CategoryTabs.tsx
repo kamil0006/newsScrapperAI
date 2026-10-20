@@ -1,16 +1,28 @@
 import Link from "next/link";
-import { CATEGORIES, type Category } from "@/lib/categories";
+import { CATEGORIES, categoryLabel, type Category } from "@/lib/categories";
+import { dictionaries } from "@/lib/i18n/dictionary";
+import type { Locale } from "@/lib/i18n/locale";
 import { buildHref, type ArticleFilters } from "@/lib/queryParams";
 
-const TABS: { label: string; value: Category | null }[] = [
-  { label: "Wszystkie", value: null },
-  ...CATEGORIES.map((category) => ({ label: category, value: category })),
-];
+export function CategoryTabs({
+  filters,
+  hiddenCategories = [],
+  locale = "pl",
+}: {
+  filters: ArticleFilters;
+  hiddenCategories?: Category[];
+  locale?: Locale;
+}) {
+  const dict = dictionaries[locale];
+  const visibleCategories = CATEGORIES.filter((category) => !hiddenCategories.includes(category));
+  const tabs: { label: string; value: Category | null }[] = [
+    { label: dict.common.all, value: null },
+    ...visibleCategories.map((category) => ({ label: categoryLabel(category, locale), value: category })),
+  ];
 
-export function CategoryTabs({ filters }: { filters: ArticleFilters }) {
   return (
     <div className="flex gap-1 flex-wrap">
-      {TABS.map((tab) => {
+      {tabs.map((tab) => {
         const isActive = tab.value === filters.category;
         return (
           <Link

@@ -1,12 +1,12 @@
 const FETCH_TIMEOUT_MS = 8000;
 const MAX_CHARS = 4000;
-const MAX_RESPONSE_BYTES = 3_000_000; // 3 MB — więcej niż potrzeba na treść artykułu
+const MAX_RESPONSE_BYTES = 3_000_000; // 3 MB — more than an article body needs
 
-// artykuły pochodzą z zewnętrznych, częściowo niekontrolowanych treści
-// (RSS, posty HN) — ktoś mógłby podesłać link do usługi wewnętrznej
-// (localhost, sieć prywatna, endpoint metadanych chmury). Blokujemy
-// oczywiste przypadki; nie chroni to przed DNS rebindingiem, na co
-// pełna ochrona wymagałaby własnej rezolucji DNS przed połączeniem.
+// articles come from external, partially uncontrolled content (RSS, HN
+// posts) — someone could slip in a link to an internal service (localhost,
+// private network, cloud metadata endpoint). We block the obvious cases;
+// this does not protect against DNS rebinding, which would need its own
+// DNS resolution before connecting for full protection.
 function isBlockedHost(hostname: string): boolean {
   const host = hostname.toLowerCase();
   if (host === "localhost" || host.endsWith(".localhost")) return true;
@@ -17,7 +17,7 @@ function isBlockedHost(hostname: string): boolean {
     if (a === 127 || a === 10 || a === 0) return true;
     if (a === 172 && b >= 16 && b <= 31) return true;
     if (a === 192 && b === 168) return true;
-    if (a === 169 && b === 254) return true; // obejmuje endpoint metadanych chmury
+    if (a === 169 && b === 254) return true; // covers the cloud metadata endpoint
   }
 
   if (host === "::1" || host.startsWith("fe80:") || host.startsWith("fc") || host.startsWith("fd")) {
@@ -76,9 +76,9 @@ function stripNoise(html: string): string {
     .replace(/<!--[\s\S]*?-->/g, " ");
 }
 
-// czyta odpowiedź z limitem bajtów, żeby serwer nie mógł wysłać
-// nieograniczonego strumienia i zjeść pamięci — nagłówek content-length
-// bywa nieobecny albo skłamany, więc liczymy realnie odebrane bajty
+// reads the response with a byte cap so a server can't send an unbounded
+// stream and exhaust memory — the content-length header is sometimes
+// absent or lies, so we count the actually received bytes
 async function readBounded(res: Response): Promise<string | null> {
   const contentLength = res.headers.get("content-length");
   if (contentLength && Number(contentLength) > MAX_RESPONSE_BYTES) return null;

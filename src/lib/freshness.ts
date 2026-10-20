@@ -1,7 +1,8 @@
 import type { Prisma } from "@/generated/prisma/client";
 
-// ile dni wstecz news liczy się jako "świeży" i pokazuje na głównej liście —
-// starsze znikają z widoku (ale zostają w bazie, dostępne w Zapisanych/Historii/czacie)
+// how many days back a story still counts as "fresh" and shows in the main
+// list — older ones drop out of view (but stay in the DB, available in
+// Saved/History/chat)
 export const FRESHNESS_DAYS = 7;
 
 export function freshnessFilter(): Prisma.ArticleWhereInput {

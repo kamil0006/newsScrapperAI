@@ -2,8 +2,8 @@ import { visibleContentFilter } from "@/lib/contentFilter";
 import { prisma } from "@/lib/prisma";
 import { jaccardSimilarity, textWords } from "@/lib/textSimilarity";
 
-// próg niżej niż przy duplikatach — chcemy złapać "kolejny rozdział tej
-// samej historii", a nie tylko niemal identyczne relacje z tego samego dnia
+// lower threshold than for duplicates — we want to catch "the next chapter
+// of the same story", not just near-identical coverage from the same day
 const THREAD_THRESHOLD = 0.25;
 const LOOKBACK_DAYS = 14;
 const MIN_WORDS = 4;
@@ -25,8 +25,8 @@ export async function linkThreads(): Promise<{ linked: number }> {
         {
           classifiedAt: { not: null },
           duplicateOfId: null,
-          // "Inne" to kategoria-śmietnik dla niepowiązanych treści (kupony,
-          // szablonowe posty) — nadmiernie generuje fałszywe wątki
+          // "Inne" is a catch-all category for unrelated content (coupons,
+          // templated posts) — it over-generates false threads
           category: { not: "Inne" },
         },
         visibleContentFilter(),

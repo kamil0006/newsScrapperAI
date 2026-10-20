@@ -21,6 +21,9 @@
   --cat-ai: #8da4f0;
   --cat-gaming: #6fcf97;
   --cat-tech: #e3b24d;
+  --cat-business: #5fb8b3;
+  --cat-science: #a78bfa;
+  --cat-entertainment: #ec6f9b;
   --cat-other: #8b93a1;
 
   --font-serif: var(--font-source-serif);
@@ -39,7 +42,15 @@
   --color-cat-ai: var(--cat-ai);
   --color-cat-gaming: var(--cat-gaming);
   --color-cat-tech: var(--cat-tech);
+  --color-cat-business: var(--cat-business);
+  --color-cat-science: var(--cat-science);
+  --color-cat-entertainment: var(--cat-entertainment);
   --color-cat-other: var(--cat-other);
+  --color-priority-5: var(--priority-5);
+  --color-priority-4: var(--priority-4);
+  --color-priority-3: var(--priority-3);
+  --color-priority-2: var(--priority-2);
+  --color-priority-1: var(--priority-1);
   --font-serif: var(--font-serif);
   --font-sans: var(--font-sans);
 }
