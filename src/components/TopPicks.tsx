@@ -29,7 +29,7 @@ export function TopPicks({
             </span>
             <Link
               href={`/read/${item.id}`}
-              className="flex-1 min-w-0 truncate text-sm text-text hover:text-white transition-colors"
+              className="flex-1 min-w-0 truncate text-sm text-text hover:text-signal transition-colors"
             >
               {item.title}
             </Link>

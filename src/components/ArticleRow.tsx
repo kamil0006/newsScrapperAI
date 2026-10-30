@@ -75,6 +75,7 @@ export function ArticleRow({
         href={`/read/${article.id}${readerQuery ? `?${readerQuery}` : ""}`}
         title={article.title}
         read={article.read}
+        tourTarget={tourTarget}
       />
 
       {article.summary ? (

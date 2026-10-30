@@ -92,7 +92,7 @@ export function ChatPanel({
             <ReadTrackingLink
               articleId={focusArticle.id}
               url={focusArticle.url}
-              className="flex-1 min-w-0 truncate text-sm text-text hover:text-white transition-colors"
+              className="flex-1 min-w-0 truncate text-sm text-text hover:text-signal transition-colors"
             >
               {focusArticle.title}
             </ReadTrackingLink>

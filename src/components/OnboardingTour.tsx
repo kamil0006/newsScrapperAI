@@ -8,6 +8,7 @@ const TARGET_SELECTORS: (string | null)[] = [
   '[data-tour="nav"]',
   '[data-tour="category-tabs"]',
   '[data-tour="article-meta"]',
+  '[data-tour="article-title"]',
   '[data-tour="article-actions"]',
   '[data-tour="refresh"]',
   '[data-tour="nav-ask"]',

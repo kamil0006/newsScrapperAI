@@ -335,6 +335,10 @@ const pl: Dictionary = {
         body: "Każdy news dostaje ocenę 1–5 i kategorię — AI sortuje listę tak, żebyś najpierw widział to, co naprawdę ważne.",
       },
       {
+        title: "Czytaj w apce",
+        body: "Kliknij tytuł, a otworzy się czysty tekst artykułu z najważniejszymi punktami od AI na górze. Obok czeka kolejny najważniejszy news — możesz czytać jeden po drugim bez wracania do listy.",
+      },
+      {
         title: "Zapisz, przedyskutuj, odrzuć",
         body: "Zapisz news na później, zapytaj AI o szczegóły albo oznacz jako nieistotne — to drugie uczy AI Twoich preferencji na przyszłość.",
       },
@@ -567,6 +571,10 @@ const en: Dictionary = {
       {
         title: "AI priority",
         body: "Every article gets a 1–5 score and a category — AI sorts the list so you see what actually matters first.",
+      },
+      {
+        title: "Read in the app",
+        body: "Click a title to open the article's clean text with AI key points on top. The next most important story waits alongside — read one after another without going back to the list.",
       },
       {
         title: "Save, discuss, dismiss",
