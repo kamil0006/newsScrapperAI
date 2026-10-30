@@ -121,13 +121,17 @@ model ArticleState {
   @@index([dismissed])
 }
 
-// daily AI-written paragraph synthesizing the last 24h of news, generated
-// on every scrape run and overwritten for the current date
+// daily AI-written paragraph synthesizing the last 24h of news. One per
+// day, language and set of visible categories — accounts with the same
+// settings share it. Dropped after each scrape and regenerated on demand.
 model DailyBrief {
   id        String   @id @default(cuid())
-  date      String   @unique // "YYYY-MM-DD"
+  key       String   @unique // "YYYY-MM-DD|pl|AI,Gaming,Tech"
+  date      String // "YYYY-MM-DD"
   content   String
   createdAt DateTime @default(now())
+
+  @@index([date])
 }
 
 // when a user last actually visited the homepage — used for "catch-up"

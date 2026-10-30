@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 import { ArticleRow } from "@/components/ArticleRow";
 import { CategoryTabs } from "@/components/CategoryTabs";
 import { CatchUpBanner } from "@/components/CatchUpBanner";
-import { DailyBrief } from "@/components/DailyBrief";
+import { DailyBriefSection, DailyBriefSkeleton } from "@/components/DailyBrief";
 import { EmptyState } from "@/components/EmptyState";
 import { OnboardingTour } from "@/components/OnboardingTour";
 import { SearchBar } from "@/components/SearchBar";
@@ -11,7 +12,6 @@ import { SourceFilter } from "@/components/SourceFilter";
 import { StatsPanel } from "@/components/StatsPanel";
 import { TopPicks } from "@/components/TopPicks";
 import { VisitTracker } from "@/components/VisitTracker";
-import { getTodaysBrief } from "@/lib/ai/brief";
 import { generateCatchUpBrief } from "@/lib/ai/catchupBrief";
 import { getCurrentUserId } from "@/lib/auth/currentUser";
 import { CATEGORIES, toCategory, type Category } from "@/lib/categories";
@@ -152,11 +152,10 @@ export default async function Home({ searchParams }: PageProps<"/">) {
   const [rows, counts, brief, newToday, mustRead, pendingClassification, sourceRows] = await Promise.all([
     rowsPromise,
     getNavCounts(userId, hiddenCategories, isHomepage ? statsDateFilter : undefined),
+    // the regular daily brief streams in separately (see <Suspense> below)
     catchUp.isCatchUp && catchUp.since
       ? generateCatchUpBrief(userId, catchUp.since, locale, hiddenCategories)
-      : isHomepage
-        ? getTodaysBrief()
-        : Promise.resolve(null),
+      : Promise.resolve(null),
     prisma.article.count({
       where: {
         AND: [
@@ -250,10 +249,18 @@ export default async function Home({ searchParams }: PageProps<"/">) {
             </p>
           </div>
 
-          {brief && catchUp.isCatchUp ? (
-            <CatchUpBanner content={brief} since={sinceLabel(catchUp.hoursAway, locale)} locale={locale} />
+          {catchUp.isCatchUp ? (
+            brief && (
+              <CatchUpBanner content={brief} since={sinceLabel(catchUp.hoursAway, locale)} locale={locale} />
+            )
           ) : (
-            brief && <DailyBrief content={brief} locale={locale} />
+            isHomepage && (
+              // generated on first view for these settings (~2-3s) — the
+              // list shouldn't wait for it
+              <Suspense fallback={<DailyBriefSkeleton />}>
+                <DailyBriefSection hiddenCategories={hiddenCategories} locale={locale} />
+              </Suspense>
+            )
           )}
 
           <TopPicks items={topPicks} locale={locale} />

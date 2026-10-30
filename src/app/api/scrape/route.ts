@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateDailyBrief } from "@/lib/ai/brief";
+import { getOrCreateDailyBrief, invalidateDailyBriefs } from "@/lib/ai/brief";
 import { classifyPendingArticles } from "@/lib/ai/classify";
+import { SESSION_COOKIE_NAME, verifySessionToken } from "@/lib/auth/session";
+import { parseHiddenCategories } from "@/lib/categoryPrefs";
 import { getCategoriesHiddenByEveryone } from "@/lib/classificationScope";
+import { prisma } from "@/lib/prisma";
 import { markDuplicates } from "@/lib/dedupe";
 import { DEFAULT_LOCALE, isLocale, LOCALE_COOKIE_NAME } from "@/lib/i18n/locale";
 import { fetchHackerNewsTopStories } from "@/lib/sources/hackernews";
@@ -77,9 +80,18 @@ export async function POST(req: NextRequest) {
     errors.push(`Wątki tematyczne: ${message}`);
   }
 
+  // briefs are per settings now: today's are dropped (each one regenerates
+  // on its next view), and the person who clicked gets theirs right away
   let brief = false;
   try {
-    brief = (await generateDailyBrief(locale)) !== null;
+    await invalidateDailyBriefs();
+    const userId = await verifySessionToken(req.cookies.get(SESSION_COOKIE_NAME)?.value);
+    const user = userId
+      ? await prisma.user.findUnique({ where: { id: userId }, select: { hiddenCategories: true } })
+      : null;
+    if (user) {
+      brief = (await getOrCreateDailyBrief(parseHiddenCategories(user.hiddenCategories), locale)) !== null;
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Nieznany błąd";
     errors.push(`Przegląd dnia: ${message}`);

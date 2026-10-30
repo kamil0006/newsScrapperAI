@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { topicsList, visibleCategories } from "@/lib/ai/brief";
 import { languageDirective } from "@/lib/ai/languageDirective";
 import type { Category } from "@/lib/categories";
 import { visibleCategoriesFilter } from "@/lib/categoryPrefs";
@@ -8,7 +9,7 @@ import { prisma } from "@/lib/prisma";
 
 const MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 
-const SYSTEM_PROMPT = `Piszesz krótkie podsumowanie "co przegapiłeś" dla developera, który nie zaglądał do newsów (AI, technologia, gry) od jakiegoś czasu.
+const systemPrompt = (topics: string) => `Piszesz krótkie podsumowanie "co przegapiłeś" dla osoby, która śledzi te tematy: ${topics}, i nie zaglądała do newsów od jakiegoś czasu.
 
 Jeden akapit, 3-5 zdań, bez wypunktowań, bez cytowania tytułów dosłownie. Skup się na tym, co najważniejsze — pomiń drobiazgi. Ton: konkretny, rzeczowy, jakbyś wprowadzał kogoś w temat po jego nieobecności.`;
 
@@ -47,7 +48,12 @@ export async function generateCatchUpBrief(
   const response = await client.chat.completions.create({
     model: MODEL,
     messages: [
-      { role: "system", content: SYSTEM_PROMPT + languageDirective(locale) },
+      {
+        role: "system",
+        content:
+          systemPrompt(topicsList(visibleCategories(hiddenCategories), "pl")) +
+          languageDirective(locale),
+      },
       {
         role: "user",
         content: JSON.stringify(
