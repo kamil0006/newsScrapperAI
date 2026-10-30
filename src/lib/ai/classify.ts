@@ -31,6 +31,11 @@ const MAX_DEEPEN_PER_RUN = 25;
 const SHALLOW_EXCERPT_CHARS = 350;
 const DEEP_EXCERPT_CHARS = 3000;
 const RICH_CONTENT_THRESHOLD = 300;
+// link posts (HN, Lobsters) come with a title only — for those the page is
+// fetched before the first pass, so the AI rates the story, not the headline
+const TITLE_ONLY_THRESHOLD = 80;
+const MAX_PREFETCH_PER_RUN = 60;
+const PREFETCH_CONCURRENCY = 8;
 const MAX_FEEDBACK_EXAMPLES = 20;
 
 const QUALITY_LABELS = ["rzetelny", "przeciętny", "lanie_wody"] as const;
@@ -52,7 +57,7 @@ Dla każdego newsa ustal (każdy obiekt w odpowiedzi dotyczy WYŁĄCZNIE newsa o
   - "Entertainment": filmy, seriale, streaming, popkultura.
   - "Inne": tylko gdy naprawdę nic z powyższych nie pasuje.
 - priority: liczba całkowita 1-5, gdzie 5 = koniecznie przeczytaj (przełomowe, unikalne, realnie zmienia coś w branży), 3 = warto rzucić okiem, 1 = pomiń (marketing, drobna aktualizacja, mało istotne, duplikat popularnego newsa).
-- summary: 1-2 zdania, konkretnie o co chodzi — bez lania wody, bez powtarzania tytułu.
+- summary: 1-2 zdania, konkretnie o co chodzi — bez lania wody, bez powtarzania tytułu. Jeśli nie masz treści (excerpt pusty), opisz, czego dotyczy news, na podstawie tytułu i źródła — NIGDY nie pisz, że brakuje treści albo informacji.
 - quality: ocena rzetelności treści — TYLKO jeśli w excerpt masz realny fragment artykułu (nie sam tytuł, nie pusty/krótszy niż ok. 300 znaków tekst). Jeśli podstaw brak, zwróć quality: null i qualityNote: null. Gdy masz realną treść, wybierz jedną z:
   - "rzetelny": konkretne fakty, źródła, liczby, cytaty — nie tylko ogólniki
   - "przeciętny": ma jakąś treść, ale płytko albo ogólnikowo
@@ -88,6 +93,9 @@ type PendingArticle = {
   sourceName: string;
   content: string | null;
   url: string;
+  // page text fetched for title-only articles — used as the excerpt and
+  // reused by the deep pass instead of fetching the page twice
+  prefetched?: string | null;
 };
 
 type ClassificationResult = {
@@ -136,7 +144,7 @@ async function classifyBatch(
             id: a.id,
             title: a.title,
             source: a.sourceName,
-            excerpt: a.content?.slice(0, excerptChars) ?? null,
+            excerpt: (a.prefetched ?? a.content)?.slice(0, excerptChars) ?? null,
           })),
         ),
       },
@@ -276,7 +284,7 @@ async function deepenArticles(
     async (group) => {
       const withText = await Promise.all(
         group.map(async (candidate): Promise<PendingArticle | null> => {
-          const fullText = await extractArticleText(candidate.url);
+          const fullText = candidate.prefetched ?? (await extractArticleText(candidate.url));
           return fullText ? { ...candidate, content: fullText } : null;
         }),
       );
@@ -336,7 +344,7 @@ export async function classifyPendingArticles(
   const skippedStale = await skipStaleUnclassified();
 
   // newest first, in case the safety cap cuts the run short
-  const pending = await prisma.article.findMany({
+  const pending: PendingArticle[] = await prisma.article.findMany({
     where: await pendingClassificationFilter(),
     orderBy: { publishedAt: "desc" },
     take: maxArticles,
@@ -349,10 +357,12 @@ export async function classifyPendingArticles(
 
   async function save(article: PendingArticle, result: ClassificationResult) {
     const hasRichContent = (article.content?.length ?? 0) > RICH_CONTENT_THRESHOLD;
-    // when real content is already present up front (HN self-posts), the
-    // model rates quality right away — with just a title, the prompt tells
-    // it to return null
-    const priority = applyQualityClamp(clampPriority(result.priority), result.quality);
+    // quality is only trusted when real content is stored up front (HN
+    // self-posts). A short prefetched excerpt isn't enough to call something
+    // fluff — that would cap the priority and skip the deep pass, which
+    // rates quality on the full text instead.
+    const quality = hasRichContent ? result.quality : null;
+    const priority = applyQualityClamp(clampPriority(result.priority), quality);
 
     await prisma.article.update({
       where: { id: article.id },
@@ -362,7 +372,7 @@ export async function classifyPendingArticles(
         worthReading: priority >= 4,
         summary: result.summary,
         classifiedAt: new Date(),
-        qualityLabel: hasRichContent ? result.quality : null,
+        qualityLabel: quality,
         qualityNote: hasRichContent ? result.qualityNote : null,
         sponsored: result.sponsored,
         language: result.language,
@@ -396,6 +406,14 @@ export async function classifyPendingArticles(
     return rejected;
   }
 
+  const titleOnly = pending
+    .filter((a) => (a.content?.length ?? 0) < TITLE_ONLY_THRESHOLD)
+    .slice(0, MAX_PREFETCH_PER_RUN);
+  await mapWithConcurrency(titleOnly, PREFETCH_CONCURRENCY, async (article) => {
+    article.prefetched = await extractArticleText(article.url);
+  });
+  const prefetched = titleOnly.filter((a) => a.prefetched).length;
+
   const rejected = await runBatches(pending, BATCH_SIZE);
   // one retry in tiny batches; anything still failing stays pending for
   // the next run
@@ -410,6 +428,7 @@ export async function classifyPendingArticles(
     deepened: deepenResult.deepened,
     pending: pending.length,
     skippedStale,
+    prefetched,
     retried: rejected.length,
     stillPending: stillRejected.length,
     tokensUsed: usage,
