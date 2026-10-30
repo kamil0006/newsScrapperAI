@@ -14,10 +14,13 @@ export function ArticleRow({
   article,
   locale = "pl",
   tourTarget = false,
+  readerQuery = "",
 }: {
   article: ArticleListItem;
   locale?: Locale;
   tourTarget?: boolean;
+  // list filters carried into the reader, so its "next" follows the same list
+  readerQuery?: string;
 }) {
   const dict = dictionaries[locale];
 
@@ -69,8 +72,7 @@ export function ArticleRow({
       </div>
 
       <ArticleTitleLink
-        articleId={article.id}
-        url={article.url}
+        href={`/read/${article.id}${readerQuery ? `?${readerQuery}` : ""}`}
         title={article.title}
         read={article.read}
       />

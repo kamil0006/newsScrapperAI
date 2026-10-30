@@ -1,5 +1,5 @@
 import { CategoryDot } from "@/components/CategoryDot";
-import { ReadTrackingLink } from "@/components/ReadTrackingLink";
+import Link from "next/link";
 import { dictionaries } from "@/lib/i18n/dictionary";
 import type { Locale } from "@/lib/i18n/locale";
 import type { ArticleListItem } from "@/lib/types";
@@ -27,14 +27,12 @@ export function TopPicks({
             <span className="shrink-0">
               <CategoryDot category={item.category} locale={locale} />
             </span>
-            <ReadTrackingLink
-              articleId={item.id}
-              url={item.url}
-              read={item.read}
+            <Link
+              href={`/read/${item.id}`}
               className="flex-1 min-w-0 truncate text-sm text-text hover:text-white transition-colors"
             >
               {item.title}
-            </ReadTrackingLink>
+            </Link>
             <span className="hidden sm:inline text-xs text-text-faint shrink-0">
               {item.sourceName}
             </span>

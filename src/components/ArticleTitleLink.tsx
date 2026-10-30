@@ -1,26 +1,24 @@
-import { ReadTrackingLink } from "@/components/ReadTrackingLink";
+import Link from "next/link";
 
+// opens the in-app reader; the reader itself marks the article as read
+// and links to the original
 export function ArticleTitleLink({
-  articleId,
-  url,
+  href,
   title,
   read,
 }: {
-  articleId: string;
-  url: string;
+  href: string;
   title: string;
   read: boolean;
 }) {
   return (
-    <ReadTrackingLink
-      articleId={articleId}
-      url={url}
-      read={read}
+    <Link
+      href={href}
       className={`block font-serif text-lg leading-snug hover:text-white transition-colors ${
         read ? "text-text-muted" : "text-text"
       }`}
     >
       {title}
-    </ReadTrackingLink>
+    </Link>
   );
 }

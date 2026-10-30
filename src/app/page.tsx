@@ -19,6 +19,7 @@ import { parseHiddenCategories, visibleCategoriesFilter } from "@/lib/categoryPr
 import { catchUpDateFilter, getCatchUpState, sinceLabel } from "@/lib/catchup";
 import { pendingClassificationFilter } from "@/lib/classificationScope";
 import { visibleContentFilter } from "@/lib/contentFilter";
+import { FEED_ORDER, feedQuery, mainFeedWhere } from "@/lib/feed";
 import { freshnessFilter, getStartOfToday } from "@/lib/freshness";
 import { dictionaries } from "@/lib/i18n/dictionary";
 import { getLocale } from "@/lib/i18n/locale";
@@ -74,13 +75,6 @@ export default async function Home({ searchParams }: PageProps<"/">) {
   const notDismissedByUser: Prisma.ArticleWhereInput = {
     NOT: { articleStates: { some: { userId, dismissed: true } } },
   };
-  // once read, an article lives on in History — the main feed (and
-  // category/source/search views) only needs to surface what's still unread;
-  // Saved keeps showing everything you saved regardless of read state
-  const notReadByUser: Prisma.ArticleWhereInput = {
-    NOT: { articleStates: { some: { userId, read: true } } },
-  };
-
   const startOfToday = getStartOfToday();
   const statsDateFilter = catchUp.isCatchUp && catchUp.since ? catchUpDateFilter(catchUp.since) : freshnessFilter();
 
@@ -115,27 +109,31 @@ export default async function Home({ searchParams }: PageProps<"/">) {
         .then((states) => states.map((s) => ({ article: s.article, read: s.read, saved: s.saved })))
     : prisma.article
         .findMany({
-          where: {
-            AND: [
-              {
-                ...(category ? { category } : {}),
-                ...(source ? { sourceName: source } : {}),
-                ...(query ? { title: { contains: query } } : {}),
-                ...(savedOnly ? { articleStates: { some: { userId, saved: true } } } : {}),
-                // duplicates are hidden only in the main view — Saved shows
-                // exactly what you actually saved
-                ...(isDefaultView ? { duplicateOfId: null } : {}),
+          where: isDefaultView
+            ? // shared with the reader's "next article" (src/lib/feed.ts).
+              // In "catch-up" mode the window stretches to cover the whole
+              // absence instead of a fixed 7 days.
+              mainFeedWhere({
+                userId,
+                filters: { category, source, q: query },
+                hiddenCategories,
+                dateFilter: statsDateFilter,
+              })
+            : {
+                // Saved shows exactly what you saved — read or not, duplicates included
+                AND: [
+                  {
+                    ...(category ? { category } : {}),
+                    ...(source ? { sourceName: source } : {}),
+                    ...(query ? { title: { contains: query } } : {}),
+                    articleStates: { some: { userId, saved: true } },
+                  },
+                  notDismissedByUser,
+                  visibleContentFilter(),
+                  categoryVisibility,
+                ],
               },
-              notDismissedByUser,
-              visibleContentFilter(),
-              categoryVisibility,
-              // old news only disappears from the main view; in "catch-up"
-              // mode the window stretches to cover the whole absence
-              // instead of a fixed 7 days
-              ...(isDefaultView ? [statsDateFilter, notReadByUser] : []),
-            ],
-          },
-          orderBy: [{ priority: "desc" }, { publishedAt: "desc" }],
+          orderBy: FEED_ORDER,
           take: 50,
           include: { articleStates: { where: { userId } } },
         })
@@ -276,6 +274,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
                   key={article.id}
                   article={article}
                   locale={locale}
+                  readerQuery={isDefaultView ? feedQuery({ category, source, q: query }) : ""}
                   tourTarget={isHomepage && i === 0}
                 />
               ))}

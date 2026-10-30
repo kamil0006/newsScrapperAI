@@ -105,7 +105,8 @@ async function readBounded(res: Response): Promise<string | null> {
   return result;
 }
 
-export async function extractArticleText(url: string): Promise<string | null> {
+// shared by both extractors: safety checks, timeout, size cap
+async function fetchHtml(url: string): Promise<string | null> {
   if (!isSafeUrl(url)) return null;
 
   const controller = new AbortController();
@@ -123,21 +124,93 @@ export async function extractArticleText(url: string): Promise<string | null> {
     const contentType = res.headers.get("content-type") ?? "";
     if (!res.ok || !contentType.includes("text/html")) return null;
 
-    const html = await readBounded(res);
-    if (!html) return null;
-
-    const region = stripNoise(extractRegion(html));
-    const text = decodeEntities(
-      region
-        .replace(/<[^>]+>/g, " ")
-        .replace(/\s+/g, " ")
-        .trim(),
-    );
-
-    return text.length > 200 ? text.slice(0, MAX_CHARS) : null;
+    return await readBounded(res);
   } catch {
     return null;
   } finally {
     clearTimeout(timeout);
   }
+}
+
+// flat text for the classifier — it doesn't need paragraphs
+export async function extractArticleText(url: string): Promise<string | null> {
+  const html = await fetchHtml(url);
+  if (!html) return null;
+
+  const region = stripNoise(extractRegion(html));
+  const text = decodeEntities(
+    region
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ")
+      .trim(),
+  );
+
+  return text.length > 200 ? text.slice(0, MAX_CHARS) : null;
+}
+
+// ---- in-app reader: keeps the article's structure (paragraphs, headings)
+
+export type ReaderBlock = { t: "p" | "h" | "li" | "q"; x: string };
+
+const READER_MAX_CHARS = 30_000;
+// below this much paragraph text the page was most likely a JS app, a
+// paywall or a cookie wall — better to say so than show scraps
+const READER_MIN_CHARS = 400;
+const MIN_PARAGRAPH_CHARS = 40;
+const JUNK = /^(advertisement|reklama|subscribe|sign up|newsletter|read more|related:|see also|follow us|share this|image:|photo:|credit:)/i;
+
+const BLOCK_TAGS: Record<string, ReaderBlock["t"]> = {
+  p: "p",
+  h2: "h",
+  h3: "h",
+  li: "li",
+  blockquote: "q",
+};
+
+function cleanText(fragment: string): string {
+  return decodeEntities(fragment.replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ").trim();
+}
+
+export function htmlToBlocks(html: string): ReaderBlock[] | null {
+  const region = stripNoise(extractRegion(html)).replace(
+    /<(figure|figcaption|form|button|svg|select|template)[^>]*>[\s\S]*?<\/\1>/gi,
+    " ",
+  );
+
+  const blocks: ReaderBlock[] = [];
+  let total = 0;
+  let paragraphChars = 0;
+  // blockquotes usually wrap <p>s — skip the inner paragraphs we've already
+  // taken as part of the quote
+  let quoteEnd = -1;
+
+  const pattern = /<(p|h2|h3|li|blockquote)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+  for (const match of region.matchAll(pattern)) {
+    const start = match.index ?? 0;
+    if (start < quoteEnd) continue;
+
+    const type = BLOCK_TAGS[match[1].toLowerCase()];
+    const text = cleanText(match[2]);
+    if (type === "q") quoteEnd = start + match[0].length;
+
+    if (!text || JUNK.test(text)) continue;
+    if (type === "h" && (text.length < 3 || text.length > 160)) continue;
+    if (type !== "h" && text.length < MIN_PARAGRAPH_CHARS) continue;
+    if (blocks.length > 0 && blocks[blocks.length - 1].x === text) continue;
+
+    blocks.push({ t: type, x: text });
+    total += text.length;
+    if (type === "p" || type === "q") paragraphChars += text.length;
+    if (total > READER_MAX_CHARS) break;
+  }
+
+  // a trailing heading with nothing under it is just noise
+  while (blocks.length > 0 && blocks[blocks.length - 1].t === "h") blocks.pop();
+
+  return paragraphChars >= READER_MIN_CHARS ? blocks : null;
+}
+
+export async function extractReadableBlocks(url: string): Promise<ReaderBlock[] | null> {
+  const html = await fetchHtml(url);
+  return html ? htmlToBlocks(html) : null;
 }

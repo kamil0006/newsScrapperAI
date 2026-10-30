@@ -36,6 +36,12 @@ model Article {
   // the AI got to it — it's never classified, so it never clogs the queue
   classificationSkippedAt DateTime?
 
+  // in-app reader, filled lazily the first time someone opens the article
+  readerText      String? // JSON: [{ t: "p" | "h" | "li" | "q", x: string }]
+  readerKeyPoints String? // JSON: string[] — AI key points
+  readerLocale    String? // language the key points were written in
+  readerFetchedAt DateTime? // set even when extraction failed, to avoid refetching every open
+
   // deduplication of the same story across different sources
   duplicateOfId String?
   duplicateOf   Article?  @relation("Duplicates", fields: [duplicateOfId], references: [id])
