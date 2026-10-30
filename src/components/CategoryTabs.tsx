@@ -22,7 +22,7 @@ export function CategoryTabs({
   ];
 
   return (
-    <div className="flex gap-1 flex-wrap">
+    <div className="flex gap-1 flex-wrap" data-tour="category-tabs">
       {tabs.map((tab) => {
         const isActive = tab.value === filters.category;
         return (

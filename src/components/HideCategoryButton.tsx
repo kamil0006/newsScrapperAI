@@ -33,7 +33,7 @@ export function HideCategoryButton({
       disabled={pending}
       aria-label={dict.hideCategory}
       title={dict.hideCategoryTitle}
-      className="shrink-0 -mr-1 text-text-faint hover:text-text disabled:opacity-50 transition-colors"
+      className="shrink-0 -mr-1 p-1 -my-1 text-text-faint hover:text-text disabled:opacity-50 transition-colors"
     >
       <svg
         width="10"

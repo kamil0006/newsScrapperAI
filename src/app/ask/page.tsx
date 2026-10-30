@@ -9,6 +9,7 @@ import { visibleContentFilter } from "@/lib/contentFilter";
 import { dictionaries } from "@/lib/i18n/dictionary";
 import { getLocale } from "@/lib/i18n/locale";
 import { getNavCounts } from "@/lib/navCounts";
+import { getTheme } from "@/lib/theme";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ export default async function AskPage({ searchParams }: PageProps<"/ask">) {
 
   const params = await searchParams;
   const locale = await getLocale();
+  const theme = await getTheme();
   const dict = dictionaries[locale];
   const since = getAskSince();
 
@@ -54,9 +56,9 @@ export default async function AskPage({ searchParams }: PageProps<"/ask">) {
 
   return (
     <>
-      <Sidebar active="ask" counts={counts} locale={locale} />
+      <Sidebar active="ask" counts={counts} locale={locale} theme={theme} />
 
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 min-w-0 flex flex-col">
         <main className="flex-1 min-w-0 px-4 sm:px-6 py-6 flex flex-col">
           <div className="mb-6">
             <h1 className="font-serif text-2xl text-text">{dict.ask.title}</h1>

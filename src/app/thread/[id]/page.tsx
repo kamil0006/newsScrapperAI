@@ -8,6 +8,7 @@ import { parseHiddenCategories } from "@/lib/categoryPrefs";
 import { dictionaries } from "@/lib/i18n/dictionary";
 import { getLocale } from "@/lib/i18n/locale";
 import { getNavCounts } from "@/lib/navCounts";
+import { getTheme } from "@/lib/theme";
 import { prisma } from "@/lib/prisma";
 import type { ArticleListItem } from "@/lib/types";
 
@@ -21,6 +22,7 @@ export default async function ThreadPage({
 
   const { id } = await params;
   const locale = await getLocale();
+  const theme = await getTheme();
   const dict = dictionaries[locale];
 
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { hiddenCategories: true } });
@@ -57,9 +59,9 @@ export default async function ThreadPage({
 
   return (
     <>
-      <Sidebar active="all" counts={counts} locale={locale} />
+      <Sidebar active="all" counts={counts} locale={locale} theme={theme} />
 
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 min-w-0 flex flex-col">
         <main className="flex-1 min-w-0 px-4 sm:px-6 py-6 max-w-2xl">
           <Link
             href="/"

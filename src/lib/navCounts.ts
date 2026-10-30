@@ -16,7 +16,10 @@ export async function getNavCounts(
     prisma.article.count({
       where: {
         AND: [
-          { duplicateOfId: null, NOT: { articleStates: { some: { userId, dismissed: true } } } },
+          {
+            duplicateOfId: null,
+            NOT: { articleStates: { some: { userId, OR: [{ dismissed: true }, { read: true }] } } },
+          },
           visibleContentFilter(),
           categoryVisibility,
           allDateFilter ?? freshnessFilter(),

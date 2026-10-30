@@ -87,10 +87,20 @@ export type Dictionary = {
     title: string;
     subtitle: string;
     categoriesHeading: string;
+    tourHeading: string;
+    tourBody: string;
+    tourReplay: string;
   };
   categoryToast: {
     hidden: (label: string) => string;
     undo: string;
+  };
+  onboarding: {
+    steps: { title: string; body: string }[];
+    next: string;
+    back: string;
+    skip: string;
+    done: string;
   };
   errors: {
     invalidRequest: string;
@@ -261,10 +271,53 @@ const pl: Dictionary = {
     title: "Ustawienia",
     subtitle: "Dopasuj apkę do siebie.",
     categoriesHeading: "Widoczne kategorie — odznacz, czego nie chcesz widzieć",
+    tourHeading: "Wprowadzenie do apki",
+    tourBody: "Krótki spacer po głównych funkcjach — przyda się, jeśli coś przeoczyłeś za pierwszym razem.",
+    tourReplay: "Pokaż ponownie",
   },
   categoryToast: {
     hidden: (label) => `Ukryto kategorię „${label}”`,
     undo: "Cofnij",
+  },
+  onboarding: {
+    steps: [
+      {
+        title: "Witaj w newsScrapperAI",
+        body: "Krótki spacer po apce — zajmie minutę. Możesz go pominąć w każdej chwili.",
+      },
+      {
+        title: "Twoja nawigacja",
+        body: "„Wszystkie” to bieżący feed. „Zapisane” i „Historia” trzymają to, co już zapisałeś albo przejrzałeś. Liczby obok pokazują, ile newsów czeka.",
+      },
+      {
+        title: "Kategorie",
+        body: "Filtruj po temacie, a jeśli któraś Cię nie interesuje — kliknij „x” obok niej, żeby zniknęła z widoku na stałe. Zawsze można ją przywrócić w Ustawieniach.",
+      },
+      {
+        title: "Priorytet od AI",
+        body: "Każdy news dostaje ocenę 1–5 i kategorię — AI sortuje listę tak, żebyś najpierw widział to, co naprawdę ważne.",
+      },
+      {
+        title: "Zapisz, przedyskutuj, odrzuć",
+        body: "Zapisz news na później, zapytaj AI o szczegóły albo oznacz jako nieistotne — to drugie uczy AI Twoich preferencji na przyszłość.",
+      },
+      {
+        title: "Pobierz nowe newsy",
+        body: "Scrapuje źródła i klasyfikuje nowe newsy przez AI na żądanie — nie ma automatycznego odświeżania w tle.",
+      },
+      {
+        title: "Zapytaj AI",
+        body: "Czat, który odpowiada wyłącznie na podstawie newsów z Twojej bazy — nic nie zmyśla i nie wychodzi do internetu.",
+      },
+      {
+        title: "Ustaw po swojemu",
+        body: "Motyw, język i to, które kategorie w ogóle chcesz widzieć — wszystko w Ustawieniach, do zmiany w każdej chwili.",
+      },
+    ],
+    next: "Dalej",
+    back: "Wstecz",
+    skip: "Pomiń",
+    done: "Zaczynamy",
   },
   errors: {
     invalidRequest: "Nieprawidłowe zapytanie",
@@ -436,10 +489,53 @@ const en: Dictionary = {
     title: "Settings",
     subtitle: "Make the app yours.",
     categoriesHeading: "Visible categories — uncheck what you don't want to see",
+    tourHeading: "App walkthrough",
+    tourBody: "A short tour of the main features — handy if you missed something the first time.",
+    tourReplay: "Show again",
   },
   categoryToast: {
     hidden: (label) => `Hid category "${label}"`,
     undo: "Undo",
+  },
+  onboarding: {
+    steps: [
+      {
+        title: "Welcome to newsScrapperAI",
+        body: "A quick walk through the app — takes a minute. You can skip it any time.",
+      },
+      {
+        title: "Your navigation",
+        body: "\"All\" is the current feed. \"Saved\" and \"History\" hold what you've bookmarked or already read. The numbers show how much is waiting.",
+      },
+      {
+        title: "Categories",
+        body: "Filter by topic, and if one doesn't interest you — click the \"x\" next to it to hide it for good. You can always bring it back in Settings.",
+      },
+      {
+        title: "AI priority",
+        body: "Every article gets a 1–5 score and a category — AI sorts the list so you see what actually matters first.",
+      },
+      {
+        title: "Save, discuss, dismiss",
+        body: "Save an article for later, ask the AI about it, or mark it as not interesting — the last one teaches the AI your preferences going forward.",
+      },
+      {
+        title: "Fetch new news",
+        body: "Scrapes sources and classifies new articles with AI on demand — there's no automatic background refresh.",
+      },
+      {
+        title: "Ask AI",
+        body: "A chat that answers only from the news in your own database — it doesn't make things up or reach out to the internet.",
+      },
+      {
+        title: "Make it yours",
+        body: "Theme, language, and which categories you even want to see — all in Settings, changeable any time.",
+      },
+    ],
+    next: "Next",
+    back: "Back",
+    skip: "Skip",
+    done: "Let's go",
   },
   errors: {
     invalidRequest: "Invalid request",

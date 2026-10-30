@@ -30,6 +30,33 @@
   --font-sans: var(--font-plex-sans);
 }
 
+:root[data-theme="light"] {
+  --bg: #f7f3e8;
+  --surface: #fdfaf2;
+  --surface-raised: #f0e9d8;
+  --border: #e2d9bf;
+  --text: #1a1d23;
+  --text-muted: #5b6270;
+  --text-faint: #8b93a1;
+
+  --signal: #a9780a;
+  --signal-dim: #f3dfb0;
+
+  --priority-5: #c23b33;
+  --priority-4: #c1701f;
+  --priority-3: #a9780a;
+  --priority-2: #6b7280;
+  --priority-1: #9aa1ad;
+
+  --cat-ai: #4a63c9;
+  --cat-gaming: #2f9e5c;
+  --cat-tech: #a9780a;
+  --cat-business: #0f8f88;
+  --cat-science: #7c5cd6;
+  --cat-entertainment: #c43d72;
+  --cat-other: #6b7280;
+}
+
 @theme inline {
   --color-bg: var(--bg);
   --color-surface: var(--surface);

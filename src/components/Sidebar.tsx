@@ -2,9 +2,11 @@ import Link from "next/link";
 import { LocaleToggle } from "@/components/LocaleToggle";
 import { Logo } from "@/components/Logo";
 import { RefreshButton } from "@/components/RefreshButton";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { logout } from "@/lib/auth/actions";
 import { dictionaries } from "@/lib/i18n/dictionary";
 import type { Locale } from "@/lib/i18n/locale";
+import type { Theme } from "@/lib/theme";
 
 type CountKey = "all" | "saved" | "history";
 
@@ -32,10 +34,12 @@ export function Sidebar({
   active,
   counts,
   locale = "pl",
+  theme = "dark",
 }: {
   active: CountKey | "ask" | "settings";
   counts: Record<CountKey, number>;
   locale?: Locale;
+  theme?: Theme;
 }) {
   const dict = dictionaries[locale];
   const NAV: {
@@ -52,21 +56,22 @@ export function Sidebar({
   ];
 
   return (
-    <aside className="w-full sm:w-56 shrink-0 border-b sm:border-b-0 sm:border-r border-border px-4 sm:px-5 py-5 flex flex-row sm:flex-col gap-4 sm:gap-6 items-center sm:items-stretch sm:sticky sm:top-0 sm:h-screen">
-      <div className="flex items-center justify-between sm:block">
+    <aside className="w-full sm:w-56 shrink-0 border-b sm:border-b-0 sm:border-r border-border px-4 sm:px-5 py-3 sm:py-5 flex flex-col sm:gap-6 sm:sticky sm:top-0 sm:h-screen">
+      <div data-tour="logo">
         <Logo />
-        <span className="sm:hidden">
-          <LocaleToggle locale={locale} />
-        </span>
         <p className="hidden sm:block text-xs text-text-faint mt-2">{dict.sidebar.tagline}</p>
       </div>
 
-      <nav className="flex flex-row sm:flex-col gap-1 flex-1 sm:flex-none">
+      <nav
+        data-tour="nav"
+        className="flex sm:flex-col gap-1 overflow-x-auto sm:overflow-visible -mx-4 sm:mx-0 px-4 sm:px-0 mt-3 sm:mt-0 pb-1 sm:pb-0"
+      >
         {NAV.map((item) => (
           <Link
             key={item.match}
             href={item.href}
-            className={`flex items-center justify-between gap-2 text-sm px-2 py-1.5 rounded-md transition-colors ${
+            data-tour={item.match === "ask" ? "nav-ask" : undefined}
+            className={`flex items-center justify-between gap-2 text-sm px-2 py-1.5 rounded-md transition-colors shrink-0 sm:shrink whitespace-nowrap ${
               active === item.match
                 ? "text-text bg-surface"
                 : "text-text-muted hover:text-text hover:bg-surface"
@@ -82,20 +87,45 @@ export function Sidebar({
         ))}
       </nav>
 
-      <div className="hidden sm:flex sm:flex-col sm:gap-3">
-        <RefreshButton locale={locale} />
-        <LocaleToggle locale={locale} />
+      <div className="flex items-center gap-2 mt-3 sm:hidden">
+        <span data-tour="refresh">
+          <RefreshButton locale={locale} />
+        </span>
+        <span data-tour="account-toggles" className="flex items-center gap-2">
+          <ThemeToggle theme={theme} />
+          <LocaleToggle locale={locale} />
+        </span>
+        <form action={logout}>
+          <button
+            type="submit"
+            aria-label={dict.common.logout}
+            title={dict.common.logout}
+            className="flex items-center justify-center w-8 h-8 rounded-md text-text-faint hover:text-text hover:bg-surface transition-colors"
+          >
+            <LogoutIcon />
+          </button>
+        </form>
       </div>
 
-      <form action={logout} className="hidden sm:block sm:mt-auto pt-3 border-t border-border">
-        <button
-          type="submit"
-          className="w-full flex items-center gap-2 -mx-2 px-2 py-1.5 rounded-md text-sm text-text-faint hover:text-text hover:bg-surface transition-colors"
-        >
-          <LogoutIcon />
-          {dict.common.logout}
-        </button>
-      </form>
+      <div className="hidden sm:block" data-tour="refresh">
+        <RefreshButton locale={locale} />
+      </div>
+
+      <div className="hidden sm:flex sm:flex-col sm:gap-3 sm:mt-auto sm:pt-3 sm:border-t sm:border-border">
+        <div className="flex items-center gap-2" data-tour="account-toggles">
+          <ThemeToggle theme={theme} />
+          <LocaleToggle locale={locale} />
+        </div>
+        <form action={logout}>
+          <button
+            type="submit"
+            className="w-full flex items-center gap-2 -mx-2 px-2 py-1.5 rounded-md text-sm text-text-faint hover:text-text hover:bg-surface transition-colors"
+          >
+            <LogoutIcon />
+            {dict.common.logout}
+          </button>
+        </form>
+      </div>
     </aside>
   );
 }

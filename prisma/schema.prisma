@@ -82,6 +82,10 @@ model User {
   // everyone starts seeing everything, hiding is opt-out per account
   hiddenCategories String @default("")
 
+  // null = hasn't seen the guided tour yet (new account, or replayed it
+  // from Settings) — set the moment they finish or skip it
+  onboardingCompletedAt DateTime?
+
   articleStates ArticleState[]
   visitState    VisitState?
 }

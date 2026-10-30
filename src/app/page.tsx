@@ -4,6 +4,7 @@ import { CategoryTabs } from "@/components/CategoryTabs";
 import { CatchUpBanner } from "@/components/CatchUpBanner";
 import { DailyBrief } from "@/components/DailyBrief";
 import { EmptyState } from "@/components/EmptyState";
+import { OnboardingTour } from "@/components/OnboardingTour";
 import { SearchBar } from "@/components/SearchBar";
 import { Sidebar } from "@/components/Sidebar";
 import { SourceFilter } from "@/components/SourceFilter";
@@ -20,6 +21,7 @@ import { visibleContentFilter } from "@/lib/contentFilter";
 import { freshnessFilter, getStartOfToday } from "@/lib/freshness";
 import { dictionaries } from "@/lib/i18n/dictionary";
 import { getLocale } from "@/lib/i18n/locale";
+import { getTheme } from "@/lib/theme";
 import { getNavCounts } from "@/lib/navCounts";
 import { prisma } from "@/lib/prisma";
 import type { ArticleFilters } from "@/lib/queryParams";
@@ -37,12 +39,16 @@ export default async function Home({ searchParams }: PageProps<"/">) {
   const userId = await getCurrentUserId();
   if (!userId) redirect("/login");
 
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { hiddenCategories: true } });
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { hiddenCategories: true, onboardingCompletedAt: true },
+  });
   const hiddenCategories = parseHiddenCategories(user?.hiddenCategories ?? "");
   const categoryVisibility = visibleCategoriesFilter(hiddenCategories);
 
   const params = await searchParams;
   const locale = await getLocale();
+  const theme = await getTheme();
   const dict = dictionaries[locale];
   const category = parseCategory(params.category);
   const source = (Array.isArray(params.source) ? params.source[0] : params.source) ?? null;
@@ -66,6 +72,12 @@ export default async function Home({ searchParams }: PageProps<"/">) {
 
   const notDismissedByUser: Prisma.ArticleWhereInput = {
     NOT: { articleStates: { some: { userId, dismissed: true } } },
+  };
+  // once read, an article lives on in History — the main feed (and
+  // category/source/search views) only needs to surface what's still unread;
+  // Saved keeps showing everything you saved regardless of read state
+  const notReadByUser: Prisma.ArticleWhereInput = {
+    NOT: { articleStates: { some: { userId, read: true } } },
   };
 
   const startOfToday = getStartOfToday();
@@ -119,7 +131,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
               // old news only disappears from the main view; in "catch-up"
               // mode the window stretches to cover the whole absence
               // instead of a fixed 7 days
-              ...(isDefaultView ? [statsDateFilter] : []),
+              ...(isDefaultView ? [statsDateFilter, notReadByUser] : []),
             ],
           },
           orderBy: [{ priority: "desc" }, { publishedAt: "desc" }],
@@ -222,9 +234,9 @@ export default async function Home({ searchParams }: PageProps<"/">) {
   return (
     <>
       <VisitTracker />
-      <Sidebar active={activeNav} counts={counts} locale={locale} />
+      <Sidebar active={activeNav} counts={counts} locale={locale} theme={theme} />
 
-      <div className="flex-1 flex flex-col lg:flex-row">
+      <div className="flex-1 min-w-0 flex flex-col lg:flex-row">
         <main className="flex-1 min-w-0 px-4 sm:px-6 py-6">
           <div className="mb-6">
             <h1 className="font-serif text-2xl text-text">
@@ -254,8 +266,13 @@ export default async function Home({ searchParams }: PageProps<"/">) {
             <EmptyState variant={emptyVariant} query={query} locale={locale} />
           ) : (
             <div className="space-y-3">
-              {articles.map((article) => (
-                <ArticleRow key={article.id} article={article} locale={locale} />
+              {articles.map((article, i) => (
+                <ArticleRow
+                  key={article.id}
+                  article={article}
+                  locale={locale}
+                  tourTarget={isHomepage && i === 0}
+                />
               ))}
             </div>
           )}
@@ -270,6 +287,17 @@ export default async function Home({ searchParams }: PageProps<"/">) {
           />
         </aside>
       </div>
+
+      <OnboardingTour
+        steps={dict.onboarding.steps}
+        active={isHomepage && !user?.onboardingCompletedAt}
+        labels={{
+          next: dict.onboarding.next,
+          back: dict.onboarding.back,
+          skip: dict.onboarding.skip,
+          done: dict.onboarding.done,
+        }}
+      />
     </>
   );
 }
