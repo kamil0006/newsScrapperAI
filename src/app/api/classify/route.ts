@@ -7,7 +7,7 @@ export async function POST(req: NextRequest) {
   const locale = isLocale(cookieLocale) ? cookieLocale : DEFAULT_LOCALE;
 
   try {
-    const result = await classifyPendingArticles(200, locale);
+    const result = await classifyPendingArticles(locale);
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";

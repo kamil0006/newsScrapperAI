@@ -17,3 +17,12 @@ export function visibleCategoriesFilter(hidden: Category[]): Prisma.ArticleWhere
   if (hidden.length === 0) return {};
   return { OR: [{ category: null }, { category: { notIn: hidden } }] };
 }
+
+// categories that every account hides — nobody would ever see them, so
+// there's no point fetching or classifying single-topic sources for them.
+// With no accounts at all, nothing counts as hidden.
+export function hiddenByEveryone(perUser: Category[][]): Category[] {
+  if (perUser.length === 0) return [];
+  const [first, ...rest] = perUser;
+  return first.filter((category) => rest.every((hidden) => hidden.includes(category)));
+}

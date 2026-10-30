@@ -2,21 +2,30 @@ import OpenAI from "openai";
 import { prisma } from "@/lib/prisma";
 import { languageDirective } from "@/lib/ai/languageDirective";
 import { applyQualityClamp, clampPriority } from "@/lib/ai/priorityRules";
+import { titleEchoMatches } from "@/lib/ai/titleEcho";
 import { CATEGORIES, toCategory } from "@/lib/categories";
+import { pendingClassificationFilter, skipStaleUnclassified } from "@/lib/classificationScope";
 import { extractArticleText } from "@/lib/extract";
 import type { Locale } from "@/lib/i18n/locale";
 
-// batches larger than structurally needed — the system prompt (grading
-// criteria) itself is sent once per batch, so fewer calls means fewer
-// repeated tokens with no impact on the quality of any single rating
-const BATCH_SIZE = 20;
+// the system prompt is sent once per batch, so bigger batches are cheaper —
+// but with 20 the model sometimes stopped early (5 of 20 results) or mixed
+// up summaries; 10 is the compromise
+const BATCH_SIZE = 10;
+// articles the model skipped or mixed up get one more try in tiny batches
+const RETRY_BATCH_SIZE = 3;
 const DEEP_BATCH_SIZE = 5;
 const MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
+// everything fresh (48h window) gets classified on each run; this is only a
+// cost/latency safety cap, normally a run has far fewer new articles
+const MAX_PER_RUN = 400;
+// batches run in parallel so a full run doesn't take minutes
+const CONCURRENCY = 4;
 
 // articles that look promising enough after the first pass (title only)
 // to be worth fetching in full and re-classifying more thoroughly
 const DEEPEN_PRIORITY_THRESHOLD = 3;
-const MAX_DEEPEN_PER_RUN = 15;
+const MAX_DEEPEN_PER_RUN = 25;
 // rough triage from the title — accuracy gets refined in the deep pass
 // anyway, so a shorter excerpt here doesn't cost quality
 const SHALLOW_EXCERPT_CHARS = 350;
@@ -32,7 +41,8 @@ type Language = (typeof LANGUAGES)[number];
 
 const BASE_SYSTEM_PROMPT = `Oceniasz newsy dla osób śledzących AI, technologię, gry, biznes/startupy, naukę i rozrywkę (filmy/seriale), które nie mają czasu przeglądać wszystkiego samemu.
 
-Dla każdego newsa ustal:
+Dla każdego newsa ustal (każdy obiekt w odpowiedzi dotyczy WYŁĄCZNIE newsa o podanym id — nie mieszaj treści między newsami):
+- titleEcho: pierwsze 5-6 słów tytułu TEGO newsa, przepisane dosłownie, bez tłumaczenia (służy do weryfikacji, że opis dotyczy właściwego newsa).
 - category: jedna z ${CATEGORIES.join(", ")}. Zasady wyboru:
   - "AI": konkretnie o sztucznej inteligencji — modele, badania AI, firmy/produkty AI. AI-research ma priorytet nad "Science".
   - "Gaming": branża gier wideo — recenzje, aktualizacje, wydania.
@@ -82,6 +92,7 @@ type PendingArticle = {
 
 type ClassificationResult = {
   id: string;
+  titleEcho: string;
   category: string;
   priority: number;
   summary: string;
@@ -143,10 +154,14 @@ async function classifyBatch(
               items: {
                 type: "object",
                 properties: {
+                  // order matters: the model writes fields in this order, so
+                  // echoing the title right before the summary anchors the
+                  // summary to the right article
                   id: { type: "string" },
+                  titleEcho: { type: "string" },
+                  summary: { type: "string" },
                   category: { type: "string", enum: CATEGORIES },
                   priority: { type: "integer", minimum: 1, maximum: 5 },
-                  summary: { type: "string" },
                   quality: { type: ["string", "null"], enum: [...QUALITY_LABELS, null] },
                   qualityNote: { type: ["string", "null"] },
                   sponsored: { type: "boolean" },
@@ -154,9 +169,10 @@ async function classifyBatch(
                 },
                 required: [
                   "id",
+                  "titleEcho",
+                  "summary",
                   "category",
                   "priority",
-                  "summary",
                   "quality",
                   "qualityNote",
                   "sponsored",
@@ -185,6 +201,58 @@ async function classifyBatch(
   };
 }
 
+// pairs results with their articles. Articles whose title echo doesn't
+// match, or that the model left out entirely, come back as `rejected`.
+function verifyResults(
+  batch: PendingArticle[],
+  results: ClassificationResult[],
+): { accepted: { article: PendingArticle; result: ClassificationResult }[]; rejected: PendingArticle[] } {
+  const accepted: { article: PendingArticle; result: ClassificationResult }[] = [];
+  const rejected: PendingArticle[] = [];
+  const seen = new Set<string>();
+
+  for (const result of results) {
+    const article = batch.find((a) => a.id === result.id);
+    if (!article || seen.has(article.id)) continue;
+    seen.add(article.id);
+    if (titleEchoMatches(result.titleEcho, article.title)) {
+      accepted.push({ article, result });
+    } else {
+      rejected.push(article);
+    }
+  }
+
+  const answered = new Set(accepted.map((a) => a.article.id));
+  for (const article of batch) {
+    if (!answered.has(article.id) && !rejected.includes(article)) rejected.push(article);
+  }
+
+  return { accepted, rejected };
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      out[index] = await fn(items[index]);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
 async function deepenArticles(
   client: OpenAI,
   candidates: { article: PendingArticle; priority: number }[],
@@ -202,40 +270,46 @@ async function deepenArticles(
   // AI call), but classification runs in groups — one model call for
   // several articles at once instead of one each, to avoid repeating the
   // system prompt for every single article
-  for (let i = 0; i < ordered.length; i += DEEP_BATCH_SIZE) {
-    const group = ordered.slice(i, i + DEEP_BATCH_SIZE);
+  const groups = await mapWithConcurrency(
+    chunk(ordered, DEEP_BATCH_SIZE),
+    CONCURRENCY,
+    async (group) => {
+      const withText = await Promise.all(
+        group.map(async (candidate): Promise<PendingArticle | null> => {
+          const fullText = await extractArticleText(candidate.url);
+          return fullText ? { ...candidate, content: fullText } : null;
+        }),
+      );
+      const readable = withText.filter((c): c is PendingArticle => c !== null);
+      if (readable.length === 0) return null;
+      const { results, usage: batchUsage } = await classifyBatch(
+        client,
+        readable,
+        DEEP_EXCERPT_CHARS,
+        systemPrompt,
+      );
+      return { readable, results, batchUsage };
+    },
+  );
 
-    const withText = await Promise.all(
-      group.map(async (candidate): Promise<PendingArticle | null> => {
-        const fullText = await extractArticleText(candidate.url);
-        return fullText ? { ...candidate, content: fullText } : null;
-      }),
-    );
-    const readable = withText.filter((c): c is PendingArticle => c !== null);
-    if (readable.length === 0) continue;
+  for (const group of groups) {
+    if (!group) continue;
+    usage = addUsage(usage, group.batchUsage);
 
-    const { results, usage: batchUsage } = await classifyBatch(
-      client,
-      readable,
-      DEEP_EXCERPT_CHARS,
-      systemPrompt,
-    );
-    usage = addUsage(usage, batchUsage);
-
-    for (const result of results) {
-      const source = readable.find((a) => a.id === result.id);
-      if (!source) continue;
-
+    // a mismatched deep result is simply dropped — the article keeps its
+    // (verified) shallow classification
+    const { accepted } = verifyResults(group.readable, group.results);
+    for (const { article, result } of accepted) {
       const priority = applyQualityClamp(clampPriority(result.priority), result.quality);
 
       await prisma.article.update({
-        where: { id: result.id },
+        where: { id: article.id },
         data: {
           category: toCategory(result.category),
           priority,
           worthReading: priority >= 4,
           summary: result.summary,
-          content: source.content,
+          content: article.content,
           qualityLabel: result.quality,
           qualityNote: result.qualityNote,
           sponsored: result.sponsored,
@@ -249,17 +323,23 @@ async function deepenArticles(
   return { deepened, usage };
 }
 
-export async function classifyPendingArticles(limit = 60, locale: Locale = "pl") {
+export async function classifyPendingArticles(
+  locale: Locale = "pl",
+  maxArticles: number = MAX_PER_RUN,
+) {
   const client = getClient();
   const systemPrompt =
     BASE_SYSTEM_PROMPT + (await buildFeedbackContext()) + languageDirective(locale);
 
-  // newest first — after a long gap, a backlog of old articles shouldn't
-  // delay classifying today's news behind it
+  // older than the window and still unclassified → skipped for good, so a
+  // long break never turns into a backlog of stale news
+  const skippedStale = await skipStaleUnclassified();
+
+  // newest first, in case the safety cap cuts the run short
   const pending = await prisma.article.findMany({
-    where: { classifiedAt: null },
+    where: await pendingClassificationFilter(),
     orderBy: { publishedAt: "desc" },
-    take: limit,
+    take: maxArticles,
     select: { id: true, title: true, sourceName: true, content: true, url: true },
   });
 
@@ -267,47 +347,60 @@ export async function classifyPendingArticles(limit = 60, locale: Locale = "pl")
   let usage: TokenUsage = { promptTokens: 0, completionTokens: 0 };
   const deepenCandidates: { article: PendingArticle; priority: number }[] = [];
 
-  for (let i = 0; i < pending.length; i += BATCH_SIZE) {
-    const batch = pending.slice(i, i + BATCH_SIZE);
-    const { results, usage: batchUsage } = await classifyBatch(
-      client,
-      batch,
-      SHALLOW_EXCERPT_CHARS,
-      systemPrompt,
-    );
-    usage = addUsage(usage, batchUsage);
+  async function save(article: PendingArticle, result: ClassificationResult) {
+    const hasRichContent = (article.content?.length ?? 0) > RICH_CONTENT_THRESHOLD;
+    // when real content is already present up front (HN self-posts), the
+    // model rates quality right away — with just a title, the prompt tells
+    // it to return null
+    const priority = applyQualityClamp(clampPriority(result.priority), result.quality);
 
-    for (const result of results) {
-      const source = batch.find((a) => a.id === result.id);
-      if (!source) continue;
+    await prisma.article.update({
+      where: { id: article.id },
+      data: {
+        category: toCategory(result.category),
+        priority,
+        worthReading: priority >= 4,
+        summary: result.summary,
+        classifiedAt: new Date(),
+        qualityLabel: hasRichContent ? result.quality : null,
+        qualityNote: hasRichContent ? result.qualityNote : null,
+        sponsored: result.sponsored,
+        language: result.language,
+      },
+    });
+    classified += 1;
 
-      const hasRichContent = (source.content?.length ?? 0) > RICH_CONTENT_THRESHOLD;
-      // when real content is already present up front (HN self-posts), the
-      // model rates quality right away — with just a title, the prompt tells
-      // it to return null
-      const priority = applyQualityClamp(clampPriority(result.priority), result.quality);
-
-      await prisma.article.update({
-        where: { id: result.id },
-        data: {
-          category: toCategory(result.category),
-          priority,
-          worthReading: priority >= 4,
-          summary: result.summary,
-          classifiedAt: new Date(),
-          qualityLabel: hasRichContent ? result.quality : null,
-          qualityNote: hasRichContent ? result.qualityNote : null,
-          sponsored: result.sponsored,
-          language: result.language,
-        },
-      });
-      classified += 1;
-
-      if (priority >= DEEPEN_PRIORITY_THRESHOLD && !hasRichContent) {
-        deepenCandidates.push({ article: source, priority });
-      }
+    if (priority >= DEEPEN_PRIORITY_THRESHOLD && !hasRichContent) {
+      deepenCandidates.push({ article, priority });
     }
   }
+
+  async function runBatches(articles: PendingArticle[], size: number): Promise<PendingArticle[]> {
+    const outcomes = await mapWithConcurrency(chunk(articles, size), CONCURRENCY, async (batch) => {
+      const { results, usage: batchUsage } = await classifyBatch(
+        client,
+        batch,
+        SHALLOW_EXCERPT_CHARS,
+        systemPrompt,
+      );
+      return { batch, results, batchUsage };
+    });
+
+    const rejected: PendingArticle[] = [];
+    for (const { batch, results, batchUsage } of outcomes) {
+      usage = addUsage(usage, batchUsage);
+      const verified = verifyResults(batch, results);
+      for (const { article, result } of verified.accepted) await save(article, result);
+      rejected.push(...verified.rejected);
+    }
+    return rejected;
+  }
+
+  const rejected = await runBatches(pending, BATCH_SIZE);
+  // one retry in tiny batches; anything still failing stays pending for
+  // the next run
+  const stillRejected =
+    rejected.length > 0 ? await runBatches(rejected, RETRY_BATCH_SIZE) : [];
 
   const deepenResult = await deepenArticles(client, deepenCandidates, systemPrompt);
   usage = addUsage(usage, deepenResult.usage);
@@ -316,6 +409,9 @@ export async function classifyPendingArticles(limit = 60, locale: Locale = "pl")
     classified,
     deepened: deepenResult.deepened,
     pending: pending.length,
+    skippedStale,
+    retried: rejected.length,
+    stillPending: stillRejected.length,
     tokensUsed: usage,
   };
 }

@@ -32,6 +32,9 @@ model Article {
   worthReading  Boolean?
   summary       String?
   classifiedAt  DateTime?
+  // set when an article aged out of the classification window (48h) before
+  // the AI got to it — it's never classified, so it never clogs the queue
+  classificationSkippedAt DateTime?
 
   // deduplication of the same story across different sources
   duplicateOfId String?

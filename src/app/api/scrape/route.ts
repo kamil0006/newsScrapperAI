@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateDailyBrief } from "@/lib/ai/brief";
 import { classifyPendingArticles } from "@/lib/ai/classify";
+import { getCategoriesHiddenByEveryone } from "@/lib/classificationScope";
 import { markDuplicates } from "@/lib/dedupe";
 import { DEFAULT_LOCALE, isLocale, LOCALE_COOKIE_NAME } from "@/lib/i18n/locale";
 import { fetchHackerNewsTopStories } from "@/lib/sources/hackernews";
@@ -13,9 +14,12 @@ export async function POST(req: NextRequest) {
   const locale = isLocale(cookieLocale) ? cookieLocale : DEFAULT_LOCALE;
   const errors: string[] = [];
 
+  // single-topic feeds for categories every account hides aren't fetched
+  const unwantedCategories = await getCategoriesHiddenByEveryone();
+
   const [hnResult, rssResult] = await Promise.allSettled([
     fetchHackerNewsTopStories(30),
-    fetchRssFeeds(),
+    fetchRssFeeds(unwantedCategories),
   ]);
 
   const articles = [
@@ -38,11 +42,15 @@ export async function POST(req: NextRequest) {
   // AI summaries, which don't exist yet for freshly saved articles
   let classified = 0;
   let deepened = 0;
+  let skippedStale = 0;
+  let retried = 0;
   let tokensUsed = { promptTokens: 0, completionTokens: 0 };
   try {
-    const result = await classifyPendingArticles(60, locale);
+    const result = await classifyPendingArticles(locale);
     classified = result.classified;
     deepened = result.deepened;
+    skippedStale = result.skippedStale;
+    retried = result.retried;
     tokensUsed = result.tokensUsed;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Nieznany błąd";
@@ -81,6 +89,9 @@ export async function POST(req: NextRequest) {
     ...saved,
     classified,
     deepened,
+    skippedStale,
+    retried,
+    skippedCategories: unwantedCategories,
     tokensUsed,
     duplicates,
     boosted,

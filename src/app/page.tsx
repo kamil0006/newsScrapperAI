@@ -17,6 +17,7 @@ import { getCurrentUserId } from "@/lib/auth/currentUser";
 import { CATEGORIES, toCategory, type Category } from "@/lib/categories";
 import { parseHiddenCategories, visibleCategoriesFilter } from "@/lib/categoryPrefs";
 import { catchUpDateFilter, getCatchUpState, sinceLabel } from "@/lib/catchup";
+import { pendingClassificationFilter } from "@/lib/classificationScope";
 import { visibleContentFilter } from "@/lib/contentFilter";
 import { freshnessFilter, getStartOfToday } from "@/lib/freshness";
 import { dictionaries } from "@/lib/i18n/dictionary";
@@ -146,6 +147,10 @@ export default async function Home({ searchParams }: PageProps<"/">) {
           })),
         );
 
+  // same definition the classifier uses, so the number means "will be
+  // classified on the next refresh", not "every unclassified row ever"
+  const pendingFilter = await pendingClassificationFilter();
+
   const [rows, counts, brief, newToday, mustRead, pendingClassification, sourceRows] = await Promise.all([
     rowsPromise,
     getNavCounts(userId, hiddenCategories, isHomepage ? statsDateFilter : undefined),
@@ -176,7 +181,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
         ],
       },
     }),
-    prisma.article.count({ where: { AND: [{ classifiedAt: null }, notDismissedByUser] } }),
+    prisma.article.count({ where: { AND: [pendingFilter, notDismissedByUser] } }),
     prisma.article.findMany({
       distinct: ["sourceName"],
       select: { sourceName: true },
